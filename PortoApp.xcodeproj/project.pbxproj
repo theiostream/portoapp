@@ -16,6 +16,7 @@
 		EDB4081917E25F7500521640 /* Default@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = EDB4081817E25F7500521640 /* Default@2x.png */; };
 		EDB4081B17E25F7500521640 /* Default-568h@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = EDB4081A17E25F7500521640 /* Default-568h@2x.png */; };
 		EDB4082317E25FA600521640 /* Bozo.m in Sources */ = {isa = PBXBuildFile; fileRef = EDB4082217E25FA600521640 /* Bozo.m */; };
+		EDBFFDD517E926A800C393D5 /* libxml2.2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */; };
 		EDD1A9F717E7C27B00AA26CF /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDD1A9F617E7C27B00AA26CF /* Security.framework */; };
 /* End PBXBuildFile section */
 
@@ -33,6 +34,7 @@
 		EDB4081A17E25F7500521640 /* Default-568h@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default-568h@2x.png"; sourceTree = "<group>"; };
 		EDB4082117E25FA600521640 /* Bozo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Bozo.h; sourceTree = "<group>"; };
 		EDB4082217E25FA600521640 /* Bozo.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = Bozo.m; sourceTree = "<group>"; };
+		EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.2.dylib; path = usr/lib/libxml2.2.dylib; sourceTree = SDKROOT; };
 		EDD1A9F617E7C27B00AA26CF /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -41,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EDBFFDD517E926A800C393D5 /* libxml2.2.dylib in Frameworks */,
 				EDD1A9F717E7C27B00AA26CF /* Security.framework in Frameworks */,
 				EDB4080517E25F7500521640 /* UIKit.framework in Frameworks */,
 				EDB4080717E25F7500521640 /* Foundation.framework in Frameworks */,
@@ -73,6 +76,7 @@
 		EDB4080317E25F7500521640 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */,
 				EDD1A9F617E7C27B00AA26CF /* Security.framework */,
 				EDB4080417E25F7500521640 /* UIKit.framework */,
 				EDB4080617E25F7500521640 /* Foundation.framework */,
@@ -246,6 +250,7 @@
 			buildSettings = {
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
+				HEADER_SEARCH_PATHS = "~/theos/include";
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = app;
@@ -257,6 +262,7 @@
 			buildSettings = {
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
+				HEADER_SEARCH_PATHS = "~/theos/include";
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				WRAPPER_EXTENSION = app;

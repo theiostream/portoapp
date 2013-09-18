@@ -13,12 +13,15 @@ Personal thanks:
 - Max Shavrick
  
 Project Thanks:
-- news:yc (Major inspiration)
+- HNKit (session design inspiration)
 - MobileCydia.mm (goes without saying)
 
 Code taken from third parties:
-- LoginController, LoadingIndicatorView were either reproduced or changed minorly from Grant Paul (chpwn)'s news:yc.
-(c) 2011 Xuzz Productions LLC, BSD Licensed.
+- XML classes were reproduced from Grant Paul (chpwn)'s HNKit.
+(c) 2013 Xuzz Productions LLC
+
+- LoginController, LoadingIndicatorView were changed minorly from Grant Paul (chpwn)'s news:yc.
+(c) 2011 Xuzz Productions LLC
 
 - KeychainItemWrapper was reproduced from Apple's GenericKeychain sample project.
 (c) 2010 Apple Inc.
@@ -298,6 +301,285 @@ Keychain API expects as a validly constructed container class.
 
 /* }}} */
 
+/* XML {{{ */
+
+#import <libxml/tree.h>
+#import <libxml/parser.h>
+#import <libxml/HTMLparser.h>
+#import <libxml/xpath.h>
+#import <libxml/xpathInternals.h>
+
+@class XMLDocument;
+@interface XMLElement : NSObject {
+    xmlNodePtr node;
+    XMLDocument *document;
+    
+    NSArray *cachedChildren;
+    NSDictionary *cachedAttributes;
+    NSString *cachedContent;
+}
+
+- (id)initWithNode:(xmlNodePtr)node_ inDocument:(XMLDocument *)document_;
+- (NSString *)content;
+- (NSString *)tagName;
+- (NSArray *)children;
+- (NSDictionary *)attributes;
+- (NSString *)attributeWithName:(NSString *)name;
+- (BOOL)isTextNode;
+- (xmlNodePtr)node;
+
+- (NSArray *)elementsMatchingPath:(NSString *)xpath;
+- (XMLElement *)firstElementMatchingPath:(NSString *)xpath;
+@end
+
+
+@interface XMLDocument : NSObject {
+    xmlDocPtr document;
+}
+
+- (id)initWithHTMLData:(NSData *)data_;
+- (id)initWithXMLData:(NSData *)data_;
+- (NSArray *)elementsMatchingPath:(NSString *)query relativeToElement:(XMLElement *)element;
+- (NSArray *)elementsMatchingPath:(NSString *)xpath;
+- (XMLElement *)firstElementMatchingPath:(NSString *)xpath;
+- (xmlDocPtr)document;
+@end
+
+static int XMLElementOutputWriteCallback(void *context, const char *buffer, int len) {
+    NSMutableData *data = context;
+    [data appendBytes:buffer length:len];
+    return len;
+}
+
+static int XMLElementOutputCloseCallback(void *context) {
+    NSMutableData *data = context;
+    [data release];
+    return 0;
+}
+
+@implementation XMLElement
+- (void)dealloc {
+    [cachedChildren release];
+    [cachedAttributes release];
+    [cachedContent release];
+    [document release];
+    
+    [super dealloc];
+}
+
+- (id)initWithNode:(xmlNodePtr)node_ inDocument:(XMLDocument *)document_ {
+    if ((self = [super init])) {
+        node = node_;
+        document = [document_ retain];
+    }
+
+    return self;
+}
+
+- (NSUInteger)hash {
+    return (NSUInteger) node;
+}
+
+- (BOOL)isEqual:(id)object {
+    if ([object isKindOfClass:[XMLElement class]]) {
+        XMLElement *other = (XMLElement *)object;
+        return [other node] == node;
+    } else {
+        return NO;
+    }
+}
+
+- (NSString *)content {
+    if (cachedContent != nil) return cachedContent;
+    
+    NSMutableString *content = [[NSMutableString string] retain];
+    
+    if (![self isTextNode]) {
+        xmlNodePtr children = node->children;
+    
+        while (children) {
+            NSMutableData *data = [[NSMutableData alloc] init];
+            xmlOutputBufferPtr buffer = xmlOutputBufferCreateIO(XMLElementOutputWriteCallback, XMLElementOutputCloseCallback, data, NULL);
+            xmlNodeDumpOutput(buffer, [document document], children, 0, 0, "utf-8");
+            xmlOutputBufferFlush(buffer);
+            [content appendString:[[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease]];
+            xmlOutputBufferClose(buffer);
+            
+            children = children->next;
+        }
+    } else {
+        xmlChar *nodeContent = xmlNodeGetContent(node);
+        [content appendString:[NSString stringWithUTF8String:(char *) nodeContent]];
+        xmlFree(nodeContent);
+    }
+    
+    cachedContent = content;
+    return cachedContent;
+}
+
+
+- (NSString *)tagName {
+    if ([self isTextNode]) return nil;
+    
+    char *nodeName = (char *) node->name;
+    if (nodeName == NULL) nodeName = "";
+    
+    NSString *name = [NSString stringWithUTF8String:nodeName];
+    return name;
+}
+
+- (NSArray *)children {
+    if (cachedChildren != nil) return cachedChildren;
+    
+    xmlNodePtr list = node->children;
+    NSMutableArray *children = [NSMutableArray array];
+        
+    while (list) {
+        XMLElement *element = [[XMLElement alloc] initWithNode:list inDocument:document];
+        [children addObject:[element autorelease]];
+        
+        list = list->next;
+    }
+    
+    cachedChildren = [children retain];
+    return cachedChildren;
+}
+
+- (NSDictionary *)attributes {
+    if (cachedAttributes != nil) return cachedAttributes;
+    
+    NSMutableDictionary *attributes = [NSMutableDictionary dictionary];
+    xmlAttrPtr list = node->properties;
+    
+    while (list) {
+        NSString *name = nil, *value = nil;
+        
+        name = [NSString stringWithCString:(const char *) list->name encoding:NSUTF8StringEncoding];
+        if (list->children != NULL && list->children->content != NULL) {
+            value = [NSString stringWithCString:(const char *) list->children->content encoding:NSUTF8StringEncoding];
+        }
+        
+        if (name != nil && value != nil) {
+            [attributes setObject:value forKey:name];
+        }
+                    
+        list = list->next;
+    }
+
+    cachedAttributes = [attributes retain];
+    return cachedAttributes;
+}
+
+- (NSString *)attributeWithName:(NSString *)name {
+    return [[self attributes] objectForKey:name];
+}
+
+- (BOOL)isTextNode {
+    return node->type == XML_TEXT_NODE;
+}
+
+- (xmlNodePtr)node {
+    return node;
+}
+
+- (NSArray *)elementsMatchingPath:(NSString *)xpath {
+    return [document elementsMatchingPath:xpath relativeToElement:self];
+}
+
+- (XMLElement *)firstElementMatchingPath:(NSString *)xpath {
+    NSArray *elements = [self elementsMatchingPath:xpath];
+
+    if ([elements count] >= 1) {
+        return [elements objectAtIndex:0];
+    } else {
+        return nil;
+    }
+}
+@end
+
+@implementation XMLDocument
+
+- (void)dealloc {
+    xmlFreeDoc(document);
+    [super dealloc];
+}
+
+- (id)initWithData:(NSData *)data isXML:(BOOL)xml {
+    if ((self = [super init])) {
+        document = (xml ? xmlReadMemory : htmlReadMemory)([data bytes], [data length], "", NULL, xml ? XML_PARSE_RECOVER : HTML_PARSE_NOWARNING | HTML_PARSE_NOERROR);
+        
+        if (document == NULL) {
+            [self autorelease];
+            return nil;
+        }
+    }
+
+    return self;
+}
+
+- (xmlDocPtr)document {
+    return document;
+}
+
+- (id)initWithXMLData:(NSData *)data_ {
+    return [self initWithData:data_ isXML:YES];
+}
+
+- (id)initWithHTMLData:(NSData *)data_ {
+  return [self initWithData:data_ isXML:NO];
+}
+
+- (NSArray *)elementsMatchingPath:(NSString *)query relativeToElement:(XMLElement *)element {
+    xmlXPathContextPtr xpathCtx;
+    xmlXPathObjectPtr xpathObj;
+    
+    xpathCtx = xmlXPathNewContext(document);
+    if (xpathCtx == NULL) return nil;
+
+    xpathCtx->node = [element node];
+    
+    xpathObj = xmlXPathEvalExpression((xmlChar *) [query cStringUsingEncoding:NSUTF8StringEncoding], xpathCtx);
+    if (xpathObj == NULL) return nil;
+    
+    xmlNodeSetPtr nodes = xpathObj->nodesetval;
+    if (nodes == NULL) return nil;
+    
+    NSMutableArray *result = [NSMutableArray array];
+    for (NSInteger i = 0; i < nodes->nodeNr; i++) {
+        XMLElement *element = [[XMLElement alloc] initWithNode:nodes->nodeTab[i] inDocument:self];
+        [result addObject:[element autorelease]];
+    }
+    
+    xmlXPathFreeObject(xpathObj);
+    xmlXPathFreeContext(xpathCtx);
+    
+    return result;
+}
+
+- (NSArray *)elementsMatchingPath:(NSString *)xpath {
+    return [self elementsMatchingPath:xpath relativeToElement:nil];
+}
+
+- (XMLElement *)firstElementMatchingPath:(NSString *)xpath {
+    NSArray *elements = [self elementsMatchingPath:xpath];
+    
+    if ([elements count] >= 1) {
+        return [elements objectAtIndex:0];
+    } else {
+        return nil;
+    }
+}
+
+@end
+
+/* }}} */
+
+/* }}} */
+
+/* Constants {{{ */
+
+#define kPortoRootURL @"http://www.portoseguro.org.br/"
+
 /* }}} */
 
 /* Macros {{{ */
@@ -359,19 +641,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)authenticateWithHandler:(SessionAuthenticationHandler)handler;
 @end
 
-@protocol SessionControllerDelegate;
-
 @interface SessionController : NSObject {
-	id<SessionControllerDelegate> $delegate;
-	
 	KeychainItemWrapper *$keychainItem;
 
 	NSDictionary *$accountInfo;
 	NSDictionary *$sessionInfo;
 }
 + (SessionController *)sharedInstance;
-
-@property(nonatomic, assign) id<SessionControllerDelegate> delegate;
 
 - (NSDictionary *)accountInfo;
 - (void)setAccountInfo:(NSDictionary *)secInfo;
@@ -380,16 +656,28 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (NSDictionary *)sessionInfo;
 - (void)setSessionInfo:(NSDictionary *)sessionInfo;
 
-- (void)loadSession;
+- (void)loadSessionWithHandler:(void(^)(BOOL, NSError *))handler;
 
 /* do stuff like "API Call to Something" from here */
 @end
 
-@protocol SessionControllerDelegate <NSObject>
-@optional
-- (void)sessionControllerSucceeded:(SessionController *)controller;
-- (void)sessionController:(SessionController *)controller failedWithError:(NSError *)error;
+/* }}} */
+
+/* Views {{{ */
+
+/* Loading Indicator View {{{ */
+
+@interface LoadingIndicatorView : UIView {
+    UIActivityIndicatorView *spinner_;
+    UILabel *label_;
+    UIView *container_;
+}
+
+@property (readonly, nonatomic) UILabel *label;
+@property (readonly, nonatomic) UIActivityIndicatorView *activityIndicatorView;
 @end
+
+/* }}} */
 
 /* }}} */
 
@@ -438,37 +726,54 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)loginControllerDidCancel:(LoginController *)controller;
 @end
 
-@interface PortoLoginController : LoginController <SessionControllerDelegate>
+@interface PortoLoginController : LoginController
 @end
 
 /* }}} */
 
-/* Root View Controller {{{ */
+/* News {{{ */
 
-@interface RootViewController : UIViewController <LoginControllerDelegate>
-@end
-
-/* }}} */
-
-/* }}} */
-
-/* Views {{{ */
-
-/* Loading Indicator View {{{ */
-
-@interface LoadingIndicatorView : UIView {
-    UIActivityIndicatorView *spinner_;
-    UILabel *label_;
-    UIView *container_;
+@interface NewsViewController : UITableViewController {
+	UITableView *$tableView;
+	UITableViewCell *$loadingCell;
+	
+	NSMutableArray *$imageData;
+	BOOL $isLoading;
 }
+@end
 
-@property (readonly, nonatomic) UILabel *label;
-@property (readonly, nonatomic) UIActivityIndicatorView *activityIndicatorView;
+/* }}} */
+
+/* Grades {{{ */
+
+@interface GradesViewController : UIViewController
+@end
+
+/* }}} */
+
+/* Papers {{{ */
+
+@interface PapersViewController : UITableViewController
+@end
+
+/* }}} */
+
+/* Services {{{ */
+
+@interface ServicesViewController : UITableViewController
+@end
+
+/* }}} */
+
+/* Account {{{ */
+
+@interface AccountViewController : UIViewController
 @end
 
 /* }}} */
 
 /* }}} */
+
 
 /* App Delegate {{{ */
 
@@ -480,231 +785,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* }}} */
 
-
 /* }}} */
 
 /* Implementation {{{ */
 
-/* Sessions {{{ */
-
-/* Constants {{{ */
-
-#define kPortoLoginURL @"http://www.educacional.com.br/login/login_ver.asp"
-
-#define kPortoLoginUsernameKey @"strLogin"
-#define kPortoLoginPasswordKey @"strSenha"
-#define kPortoLoginErrorRedirect @"errologin.asp"
-
-#define kPortoGenderCookie @"Sexo"
-#define kPortoGradeCookie @"Serie"
-#define kPortoNameCookie @"Nome"
-#define kPortoASPSessionCookie @"ASPSESSIONID"
-
-#define kPortoUsernameKey @"PortoUsernameKey"
-#define kPortoPasswordKey @"PortoPasswordKey"
-
-#define kPortoPortalKey @"PortoPortalKey"
-#define kPortoCookieKey @"PortoCookieKey"
-#define kPortoNameKey @"PortoNameKey"
-#define kPortoGradeKey @"PortoGradeKey"
-#define kPortoGenderKey @"PortoGenderKey"
-
-/* }}} */
-
-/* Session Authenticator {{{ */
-
-@implementation SessionAuthenticator
-- (SessionAuthenticator *)initWithUsername:(NSString *)username password:(NSString *)password {
-	if ((self = [super init])) {
-		$username = [username retain];
-		$password = [password retain];
-		
-		$connection = nil;
-		$handler = nil;
-	}
-
-	return self;
-}
-
-- (void)endConnection {
-	[[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:NO];
-	
-	[$connection release];
-	$connection = nil;
-
-	[$handler release];
-	$handler = nil;
-}
-
-- (void)connectionDidFinishLoading:(NSURLConnection *)connection {
-	$handler(nil, nil, [NSError errorWithDomain:@"PortoServerError" code:-1 userInfo:nil]);
-	[self endConnection];
-}
-
-- (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
-	$handler(nil, nil, error);
-	[self endConnection];
-}
-
-- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {
-	if (response == nil) return request;
-
-	if (response != nil) {
-		NSDictionary *headerFields = [(NSHTTPURLResponse *)response allHeaderFields];
-		NSString *location = [headerFields objectForKey:@"Location"];
-
-		if ([location hasPrefix:kPortoLoginErrorRedirect]) {
-			$handler(nil, nil, [NSError errorWithDomain:@"PortoServerError" code:1 userInfo:nil]);
-		}
-		else {
-			$handler([NSHTTPCookie cookiesWithResponseHeaderFields:headerFields forURL:[response URL]], [location lastPathComponent], nil);
-		}
-	}
-	else $handler(nil, nil, [NSError errorWithDomain:@"PortoServerError" code:-1 userInfo:nil]);
-	
-	[connection cancel];
-	[self endConnection];
-
-	return nil;
-}
-
-- (void)authenticateWithHandler:(SessionAuthenticationHandler)handler {
-	$handler = [handler copy];
-
-	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:[NSURL URLWithString:kPortoLoginURL]];
-	[request setHTTPMethod:@"POST"];
-	[request setHTTPShouldHandleCookies:NO];
-	
-	NSDictionary *data = [NSDictionary dictionaryWithObjectsAndKeys:
-		$username, kPortoLoginUsernameKey,
-		$password, kPortoLoginPasswordKey,
-		nil];
-	[request setHTTPBody:[[data urlEncodedString] dataUsingEncoding:NSUTF8StringEncoding]];
-	
-	[[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:YES];
-	$connection = [[NSURLConnection alloc] initWithRequest:request delegate:self];
-	[request release];
-}
-
-- (void)dealloc {
-	[$username release];
-	[$password release];
-	[super dealloc];
-}
-@end
-
-/* }}} */
-
-/* Session Controller {{{ */
-
-@implementation SessionController
-@synthesize delegate = $delegate;
-
-+ (SessionController *)sharedInstance {
-	static SessionController *sessionController = nil;
-
-	static dispatch_once_t token;
-	dispatch_once(&token, ^{
-		sessionController = [[[self class] alloc] init];
-	});
-
-	return sessionController;
-}
-
-- (id)init {
-	if ((self = [super init])) {
-		$keychainItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoApp" accessGroup:@"am.theiostre.portoapp.keychain"];
-		if (![[$keychainItem objectForKey:(id)kSecAttrAccount] isEqualToString:@""]) {
-			$accountInfo = [[NSDictionary alloc] initWithObjectsAndKeys:
-				[$keychainItem objectForKey:(id)kSecAttrAccount], kPortoUsernameKey,
-				[$keychainItem objectForKey:(id)kSecValueData], kPortoPasswordKey,
-				nil];
-		}
-		else $accountInfo = nil;
-
-		$sessionInfo = nil;
-	}
-
-	return self;
-}
-
-- (NSDictionary *)accountInfo {
-	return $accountInfo;
-}
-
-- (void)setAccountInfo:(NSDictionary *)accountInfo {
-	if ($accountInfo != nil) [$accountInfo release];
-	
-	[$keychainItem setObject:[accountInfo objectForKey:kPortoUsernameKey] forKey:(id)kSecAttrAccount];
-	[$keychainItem setObject:[accountInfo objectForKey:kPortoPasswordKey] forKey:(id)kSecValueData];
-	
-	$accountInfo = [accountInfo retain];
-}
-
-- (BOOL)hasAccount {
-	return $accountInfo != nil;
-}
-
-- (NSDictionary *)sessionInfo {
-	return $sessionInfo;
-}
-
-- (void)setSessionInfo:(NSDictionary *)sessionInfo {
-	if ($sessionInfo != nil) [$sessionInfo release];
-	$sessionInfo = [sessionInfo retain];
-}
-
-- (void)loadSession {
-	SessionAuthenticator *authenticator = [[SessionAuthenticator alloc] initWithUsername:[$accountInfo objectForKey:kPortoUsernameKey] password:[$accountInfo objectForKey:kPortoPasswordKey]];
-	[authenticator authenticateWithHandler:^(NSArray *cookies, NSString *portal, NSError *error){
-		NSLog(@"Cookies: %@", cookies);
-		
-		if (portal != nil) {
-			NSString *sessionCookie;
-			NSString *nameCookie;
-			NSString *gradeCookie;
-			NSString *genderCookie;
-
-			for (NSHTTPCookie *cookie in cookies) {
-				NSString *name = [cookie name];
-				if ([name isEqualToString:kPortoGenderCookie]) genderCookie = [cookie value];
-				else if ([name isEqualToString:kPortoGradeCookie]) gradeCookie = [cookie value];
-				else if ([name isEqualToString:kPortoNameCookie]) nameCookie = [cookie value];
-				else if ([name hasPrefix:kPortoASPSessionCookie]) sessionCookie = [cookie value];
-			}
-			
-			NSDictionary *sessionInfo = [NSDictionary dictionaryWithObjectsAndKeys:
-				portal, kPortoPortalKey,
-				sessionCookie, kPortoCookieKey,
-				nameCookie, kPortoNameKey,
-				gradeCookie, kPortoGradeKey,
-				genderCookie, kPortoGenderKey,
-				nil];
-			[self setSessionInfo:sessionInfo];
-
-			[$delegate sessionControllerSucceeded:self];
-		}
-		else [$delegate sessionController:self failedWithError:error];
-	}];
-	[authenticator release];
-}
-
-- (void)dealloc {
-	[$keychainItem release];
-	[$accountInfo release];
-	[$sessionInfo release];
-	
-	[super dealloc];
-}
-@end
-
-/* }}} */
-
-/* }}} */
-
-/* Login Controller {{{ */
-
-/* Login UI Backbone {{{ */
+/* Views {{{ */
 @implementation LoadingIndicatorView
 - (id)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame]) != nil) {
@@ -766,6 +851,241 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 @end
 
+/* }}} */
+
+/* Sessions {{{ */
+
+/* Constants {{{ */
+
+#define kPortoErrorDomain @"PortoServerError"
+
+#define kPortoLoginURL @"http://www.educacional.com.br/login/login_ver.asp"
+
+#define kPortoLoginUsernameKey @"strLogin"
+#define kPortoLoginPasswordKey @"strSenha"
+#define kPortoLoginErrorRedirect @"/login/errologin.asp"
+
+#define kPortoGenderCookie @"Sexo"
+#define kPortoGradeCookie @"Serie"
+#define kPortoNameCookie @"Nome"
+#define kPortoASPSessionCookie @"ASPSESSIONID"
+
+#define kPortoUsernameKey @"PortoUsernameKey"
+#define kPortoPasswordKey @"PortoPasswordKey"
+
+#define kPortoPortalKey @"PortoPortalKey"
+#define kPortoCookieKey @"PortoCookieKey"
+#define kPortoNameKey @"PortoNameKey"
+#define kPortoGradeKey @"PortoGradeKey"
+#define kPortoGenderKey @"PortoGenderKey"
+
+#define kPortoInfantilPortal @"/ed_infantil_new/ed_infantil.asp"
+#define kPortoNivelIPortal @"/alunos14/alunos14.asp"
+#define kPortoNivelIIPortal @"/alunos58/alunos58.asp"
+#define kPortoEMPortal @"/alunos13/alunos13.asp"
+
+/* }}} */
+
+/* Session Authenticator {{{ */
+
+@implementation SessionAuthenticator
+- (SessionAuthenticator *)initWithUsername:(NSString *)username password:(NSString *)password {
+	if ((self = [super init])) {
+		$username = [username retain];
+		$password = [password retain];
+		
+		$connection = nil;
+		$handler = nil;
+	}
+
+	return self;
+}
+
+- (void)endConnection {
+	[[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:NO];
+	
+	[$connection release];
+	$connection = nil;
+
+	[$handler release];
+	$handler = nil;
+}
+
+- (void)connectionDidFinishLoading:(NSURLConnection *)connection {
+	$handler(nil, nil, [NSError errorWithDomain:@"PortoServerError" code:-1 userInfo:nil]);
+	[self endConnection];
+}
+
+- (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
+	$handler(nil, nil, error);
+	[self endConnection];
+}
+
+- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {
+	if (response == nil) return request;
+
+	if (response != nil) {
+		NSDictionary *headerFields = [(NSHTTPURLResponse *)response allHeaderFields];
+		NSString *location = [headerFields objectForKey:@"Location"];
+        
+		if ([location hasPrefix:kPortoLoginErrorRedirect]) {
+			$handler(nil, nil, [NSError errorWithDomain:kPortoErrorDomain code:1 userInfo:nil]);
+		}
+		else if ([location hasPrefix:kPortoInfantilPortal] || [location hasPrefix:kPortoNivelIPortal] || [location hasPrefix:kPortoNivelIIPortal] || [location hasPrefix:kPortoEMPortal]) {
+			$handler([NSHTTPCookie cookiesWithResponseHeaderFields:headerFields forURL:[response URL]], location, nil);
+		}
+		else {
+			$handler(nil, nil, [NSError errorWithDomain:kPortoErrorDomain code:2 userInfo:[NSDictionary dictionaryWithObjectsAndKeys:[location lastPathComponent], @"BadPortal", nil]]);
+		}
+	}
+	else $handler(nil, nil, [NSError errorWithDomain:kPortoErrorDomain code:-1 userInfo:nil]);
+	
+	[connection cancel];
+	[self endConnection];
+
+	return nil;
+}
+
+- (void)authenticateWithHandler:(SessionAuthenticationHandler)handler {
+	$handler = [handler copy];
+
+	NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:[NSURL URLWithString:kPortoLoginURL]];
+	[request setHTTPMethod:@"POST"];
+	[request setHTTPShouldHandleCookies:NO];
+	
+	NSDictionary *data = [NSDictionary dictionaryWithObjectsAndKeys:
+		$username, kPortoLoginUsernameKey,
+		$password, kPortoLoginPasswordKey,
+		nil];
+	[request setHTTPBody:[[data urlEncodedString] dataUsingEncoding:NSUTF8StringEncoding]];
+	
+	[[UIApplication sharedApplication] setNetworkActivityIndicatorVisible:YES];
+	$connection = [[NSURLConnection alloc] initWithRequest:request delegate:self];
+	[request release];
+}
+
+- (void)dealloc {
+	[$username release];
+	[$password release];
+	[super dealloc];
+}
+@end
+
+/* }}} */
+
+/* Session Controller {{{ */
+
+@implementation SessionController
++ (SessionController *)sharedInstance {
+	static SessionController *sessionController = nil;
+
+	static dispatch_once_t token;
+	dispatch_once(&token, ^{
+		sessionController = [[[self class] alloc] init];
+	});
+
+	return sessionController;
+}
+
+- (id)init {
+	if ((self = [super init])) {
+		$keychainItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoApp" accessGroup:@"am.theiostre.portoapp.keychain"];
+		if (![[$keychainItem objectForKey:(id)kSecAttrAccount] isEqualToString:@""]) {
+			$accountInfo = [[NSDictionary alloc] initWithObjectsAndKeys:
+				[$keychainItem objectForKey:(id)kSecAttrAccount], kPortoUsernameKey,
+				[$keychainItem objectForKey:(id)kSecValueData], kPortoPasswordKey,
+				nil];
+		}
+		else $accountInfo = nil;
+
+		$sessionInfo = nil;
+	}
+
+	return self;
+}
+
+- (NSDictionary *)accountInfo {
+	return $accountInfo;
+}
+
+- (void)setAccountInfo:(NSDictionary *)accountInfo {
+	if ($accountInfo != nil) [$accountInfo release];
+	
+	if (accountInfo == nil) {
+		[$keychainItem resetKeychainItem];
+	}
+	else {
+		[$keychainItem setObject:[accountInfo objectForKey:kPortoUsernameKey] forKey:(id)kSecAttrAccount];
+		[$keychainItem setObject:[accountInfo objectForKey:kPortoPasswordKey] forKey:(id)kSecValueData];
+	}
+
+	$accountInfo = [accountInfo retain];
+}
+
+- (BOOL)hasAccount {
+	return $accountInfo != nil;
+}
+
+- (NSDictionary *)sessionInfo {
+	return $sessionInfo;
+}
+
+- (void)setSessionInfo:(NSDictionary *)sessionInfo {
+	if ($sessionInfo != nil) [$sessionInfo release];
+	$sessionInfo = [sessionInfo retain];
+}
+
+- (void)loadSessionWithHandler:(void(^)(BOOL, NSError *))handler {
+	SessionAuthenticator *authenticator = [[SessionAuthenticator alloc] initWithUsername:[$accountInfo objectForKey:kPortoUsernameKey] password:[$accountInfo objectForKey:kPortoPasswordKey]];
+	[authenticator authenticateWithHandler:^(NSArray *cookies, NSString *portal, NSError *error){
+		NSLog(@"Cookies: %@", cookies);
+		
+		if (portal != nil) {
+			NSString *sessionCookie;
+			NSString *nameCookie;
+			NSString *gradeCookie;
+			NSString *genderCookie;
+
+			for (NSHTTPCookie *cookie in cookies) {
+				NSString *name = [cookie name];
+				if ([name isEqualToString:kPortoGenderCookie]) genderCookie = [cookie value];
+				else if ([name isEqualToString:kPortoGradeCookie]) gradeCookie = [cookie value];
+				else if ([name isEqualToString:kPortoNameCookie]) nameCookie = [cookie value];
+				else if ([name hasPrefix:kPortoASPSessionCookie]) sessionCookie = [cookie value];
+			}
+			
+			NSDictionary *sessionInfo = [NSDictionary dictionaryWithObjectsAndKeys:
+				portal, kPortoPortalKey,
+				sessionCookie, kPortoCookieKey,
+				nameCookie, kPortoNameKey,
+				gradeCookie, kPortoGradeKey,
+				genderCookie, kPortoGenderKey,
+				nil];
+			[self setSessionInfo:sessionInfo];
+
+			handler(YES, nil);
+		}
+		else handler(NO, error);
+	}];
+	[authenticator release];
+}
+
+- (void)dealloc {
+	[$keychainItem release];
+	[$accountInfo release];
+	[$sessionInfo release];
+	
+	[super dealloc];
+}
+@end
+
+/* }}} */
+
+/* }}} */
+
+/* Login Controller {{{ */
+
+/* Login UI Backbone {{{ */
 @implementation LoginController
 @synthesize delegate = $delegate;
 
@@ -935,11 +1255,16 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 	if (success) [$delegate loginControllerDidLogin:self];
 	else {
-		NSLog(@"Code: %d", [error code]);
-		
 		UIAlertView *alert = [[UIAlertView alloc] init];
 		[alert setTitle:@"Falha de login"];
-		[alert setMessage:@"Foi impossível fazer login com estas credenciais. Verifique login e senha."];
+		
+		if ([error code] == 1)
+			[alert setMessage:@"Foi impossível fazer login com estas credenciais. Verifique login e senha."];
+		else if ([error code] == 2)
+			[alert setMessage:[NSString stringWithFormat:@"O portal %@ não é suportado pelo app.", [[error userInfo] objectForKey:@"BadDomain"]]];
+		else
+			[alert setMessage:@"Erro desconhecido."];
+
 		[alert addButtonWithTitle:@"Descartar"];
 		[alert setCancelButtonIndex:0];
 		[alert show];
@@ -1053,19 +1378,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (NSArray *)gradientColors {
-	debug(@"portoooo");
 	return [NSArray arrayWithObjects:
 		(id)[UIColorFromHexWithAlpha(0x165EC4, 1.f) CGColor],
 		(id)[UIColorFromHexWithAlpha(0x5781DE, 1.f) CGColor],
 		nil];
-}
-
-- (void)sessionControllerSucceeded:(SessionController *)controller {
-	[self endRequestWithSuccess:YES error:nil];
-}
-
-- (void)sessionController:(SessionController *)controller failedWithError:(NSError *)error {
-	[self endRequestWithSuccess:NO error:error];
 }
 
 - (void)authenticate {
@@ -1073,43 +1389,179 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	NSString *password = [$passwordField text];
 	
 	SessionController *controller = [SessionController sharedInstance];
-	[controller setDelegate:self];
 
 	[controller setAccountInfo:[NSDictionary dictionaryWithObjectsAndKeys:
 		user, kPortoUsernameKey,
 		password, kPortoPasswordKey,
 		nil]];
-	[controller loadSession];
+	
+	[controller loadSessionWithHandler:^(BOOL success, NSError *error){
+		if (!success) [controller setAccountInfo:nil];
+		[self endRequestWithSuccess:success error:error];
+	}];
 }
 @end
 /* }}} */
 
 /* }}} */
 
-/* Root Controller {{{ */
+/* News Controller {{{ */
 
-@implementation RootViewController
-- (void)loadView {
-	[self setView:[[[UIView alloc] initWithFrame:[[UIScreen mainScreen] applicationFrame]] autorelease]];
-	[[self view] setBackgroundColor:[UIColor redColor]];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-	[super viewDidAppear:animated];
-	
-	NSLog(@"ACC %@", [[SessionController sharedInstance] accountInfo]);
-
-	if (![[SessionController sharedInstance] hasAccount]) {
-		PortoLoginController *lc = [[[PortoLoginController alloc] init] autorelease];
-		[lc setDelegate:self];
-		UINavigationController *c = [[[UINavigationController alloc] initWithRootViewController:lc] autorelease];
-		[self presentViewController:c animated:YES completion:NULL];
+@implementation NewsViewController
+- (id)init {
+	if ((self = [super init])) {
+		$imageData = [[NSMutableArray alloc] init];
+		$isLoading = YES;
 	}
+
+	return self;
 }
 
-- (void)loginControllerDidLogin:(LoginController *)ctrl {
-	[self dismissViewControllerAnimated:YES completion:NULL];
-	NSLog(@"%@ %@", [[SessionController sharedInstance] sessionInfo], [[SessionController sharedInstance] accountInfo]);
+- (void)loadView {
+	$tableView = [[UITableView alloc] initWithFrame:[[UIScreen mainScreen] applicationFrame] style:UITableViewStylePlain];
+	[$tableView setScrollEnabled:NO];
+	[self setTableView:$tableView];
+
+	$loadingCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+	LoadingIndicatorView *loadingIndicatorView = [[[LoadingIndicatorView alloc] initWithFrame:CGRectMake(0, 0, 200, 50)] autorelease];
+	[loadingIndicatorView setCenter:[$loadingCell center]];
+	[$loadingCell addSubview:loadingIndicatorView];
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
+		
+		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+		NSArray *list = [document elementsMatchingPath:@"//body/div[@id = 'main']/div[@id = 'banner']/div[@id = 'bannerFoto']/ul/li"];
+		
+		for (XMLElement *banner in list) {
+			XMLElement *span = [banner firstElementMatchingPath:@".//div/span"];
+			XMLElement *a = [banner firstElementMatchingPath:@".//a"];
+			
+			XMLElement *img = [banner firstElementMatchingPath:@".//a/img"];
+			UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[kPortoRootURL stringByAppendingString:[[img attributes] objectForKey:@"src"]]]]];
+			
+			NSDictionary *result = [NSDictionary dictionaryWithObjectsAndKeys:
+				[span content], @"Porto",
+				[[a attributes] objectForKey:@"href"], @"Link",
+				image, @"Image",
+				nil];
+			[$imageData addObject:result];
+		}
+
+		NSLog(@"ARRY %@", $imageData);
+		
+		$isLoading = NO;
+
+		[$tableView setScrollEnabled:YES];
+		[$tableView reloadData];
+	});
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return $isLoading ? 1 : [$imageData count];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	return 1;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+	return $isLoading ? 0.f : 30.f;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+	return $isLoading ? [[self tableView] bounds].size.height : 70.f;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	if ($isLoading) return $loadingCell;
+	
+	static NSString *cellIdentifier = @"PortoNewsCellIdentifier";
+	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+	if (cell == nil) {
+		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier] autorelease];
+		
+		UIImageView *imageView = [[[UIImageView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 70.f)] autorelease];
+		[imageView setImage:[[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Image"]];
+		[[cell contentView] addSubview:imageView];
+	}
+
+	return cell;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	if ($isLoading) return nil;
+	
+	NSString *text = [[$imageData objectAtIndex:section] objectForKey:@"Porto"];
+	if ([text isEqualToString:@""]) text = @"Institucional";
+
+	UIView *view = [[[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 30.f)] autorelease];
+	[view setBackgroundColor:[UIColor redColor]];
+	
+	UILabel *label = [[[UILabel alloc] initWithFrame:CGRectMake(10.f, 3.f, [tableView bounds].size.width - 12.f, 24.f)] autorelease];
+	[label setBackgroundColor:[UIColor clearColor]];
+	[label setTextColor:[UIColor whiteColor]];
+	[label setFont:[UIFont systemFontOfSize:19.f]];
+	[label setText:text];
+	[view addSubview:label];
+
+	return view;
+}
+
+- (void)dealloc {
+	[$tableView release];
+	[$loadingCell release];
+	[$imageData release];
+
+	[super dealloc];
+}
+@end
+
+/* }}} */
+
+/* Grades Controller {{{ */
+
+@implementation GradesViewController
+- (void)loadView {
+	[super loadView];
+	[[self view] setBackgroundColor:[UIColor blueColor]];
+}
+@end
+
+/* }}} */
+
+/* Papers Controller {{{ */
+
+@implementation PapersViewController
+- (void)loadView {
+	[super loadView];
+	[[self view] setBackgroundColor:[UIColor blueColor]];
+}
+@end
+
+/* }}} */
+
+/* Services Controller {{{ */
+
+@implementation ServicesViewController
+- (void)loadView {
+	[super loadView];
+	[[self view] setBackgroundColor:[UIColor blueColor]];
+}
+@end
+
+/* }}} */
+
+/* Account Controller {{{ */
+
+@implementation AccountViewController
+- (void)loadView {
+	[super loadView];
+	[[self view] setBackgroundColor:[UIColor blueColor]];
 }
 @end
 
@@ -1123,9 +1575,28 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)applicationDidFinishLaunching:(UIApplication *)application {
 	$window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
 	
-	RootViewController *r = [[[RootViewController alloc] init] autorelease];
-	NSArray *controllers = [NSArray arrayWithObjects:r, nil];
-    
+	NewsViewController *newsViewController = [[[NewsViewController alloc] init] autorelease];
+	[newsViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:nil tag:0] autorelease]];
+
+	GradesViewController *gradesViewController = [[[GradesViewController alloc] init] autorelease];
+	[gradesViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:nil tag:0] autorelease]];
+
+	PapersViewController *papersViewController = [[[PapersViewController alloc] init] autorelease];
+	[papersViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Circulares" image:nil tag:0] autorelease]];
+
+	ServicesViewController *servicesViewController = [[[ServicesViewController alloc] init] autorelease];
+	[servicesViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Serviços" image:nil tag:0] autorelease]];
+
+	AccountViewController *accountViewController = [[[AccountViewController alloc] init] autorelease];
+	[accountViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Conta" image:nil tag:0] autorelease]];
+
+	NSArray *controllers = [NSArray arrayWithObjects:
+		newsViewController,
+		gradesViewController,
+		papersViewController,
+		servicesViewController,
+		accountViewController,
+		nil];
 	$tabBarController = [[UITabBarController alloc] init];
 	[$tabBarController setViewControllers:controllers];
     

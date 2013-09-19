@@ -18,7 +18,7 @@ Project Thanks:
 
 Code taken from third parties:
 - XML classes were reproduced from Grant Paul (chpwn)'s HNKit.
-(c) 2013 Xuzz Productions LLC
+(c) 2011 Xuzz Productions LLC
 
 - LoginController, LoadingIndicatorView were changed minorly from Grant Paul (chpwn)'s news:yc.
 (c) 2011 Xuzz Productions LLC
@@ -26,11 +26,15 @@ Code taken from third parties:
 - KeychainItemWrapper was reproduced from Apple's GenericKeychain sample project.
 (c) 2010 Apple Inc.
 
+- ABTableViewCell was reproduced from atebits.com's blog post, now on enormego's github repo.
+(c) 2008 Loren Brichter
+
 }}} */
 
 /* Include {{{ */
 #import <UIKit/UIKit.h>
 #import <Security/Security.h>
+#import <CoreText/CoreText.h>
 /* }}} */
 
 /* External {{{ */
@@ -574,6 +578,152 @@ static int XMLElementOutputCloseCallback(void *context) {
 
 /* }}} */
 
+/* ABTableViewCell {{{ */
+
+@interface ABTableViewCell : UITableViewCell {
+	UIView* contentView;
+	UIView* selectedContentView;
+}
+
+- (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted; // subclasses should implement
+@end
+
+@interface ABTableViewCellView : UIView
+@end
+
+@interface ABTableViewSelectedCellView : UIView
+@end
+
+@implementation ABTableViewCellView
+- (id)initWithFrame:(CGRect)frame {
+	if((self = [super initWithFrame:frame])) {
+		self.contentMode = UIViewContentModeRedraw;
+	}
+
+	return self;
+}
+
+- (void)drawRect:(CGRect)rect {
+	[(ABTableViewCell *)[self superview] drawContentView:rect highlighted:NO];
+}
+@end
+
+@implementation ABTableViewSelectedCellView
+- (id)initWithFrame:(CGRect)frame {
+	if((self = [super initWithFrame:frame])) {
+		self.contentMode = UIViewContentModeRedraw;
+	}
+
+	return self;
+}
+
+- (void)drawRect:(CGRect)rect {
+	[(ABTableViewCell *)[self superview] drawContentView:rect highlighted:YES];
+}
+@end
+
+
+@implementation ABTableViewCell
+- (id)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+    if(self = [super initWithStyle:style reuseIdentifier:reuseIdentifier]) {
+		contentView = [[ABTableViewCellView alloc] initWithFrame:CGRectZero];
+		contentView.opaque = YES;
+		self.backgroundView = contentView;
+		[contentView release];
+
+		selectedContentView = [[ABTableViewSelectedCellView alloc] initWithFrame:CGRectZero];
+		selectedContentView.opaque = YES;
+		self.selectedBackgroundView = selectedContentView;
+		[selectedContentView release];
+
+    }
+
+    return self;
+}
+
+- (void)dealloc {
+	[super dealloc];
+}
+
+- (void)setSelected:(BOOL)selected {
+	[selectedContentView setNeedsDisplay];
+
+	if(!selected && self.selected) {
+		[contentView setNeedsDisplay];
+	}
+
+	[super setSelected:selected];
+}
+
+- (void)setSelected:(BOOL)selected animated:(BOOL)animated {
+	[selectedContentView setNeedsDisplay];
+
+	if(!selected && self.selected) {
+		[contentView setNeedsDisplay];
+	}
+
+	[super setSelected:selected animated:animated];
+}
+
+- (void)setHighlighted:(BOOL)highlighted {
+	[selectedContentView setNeedsDisplay];
+
+	if(!highlighted && self.highlighted) {
+		[contentView setNeedsDisplay];
+	}
+
+	[super setHighlighted:highlighted];
+}
+
+- (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
+	[selectedContentView setNeedsDisplay];
+
+	if(!highlighted && self.highlighted) {
+		[contentView setNeedsDisplay];
+	}
+
+	[super setHighlighted:highlighted animated:animated];
+}
+
+- (void)setFrame:(CGRect)f {
+	[super setFrame:f];
+	CGRect b = [self bounds];
+	// b.size.height -= 1; // leave room for the seperator line
+	[contentView setFrame:b];
+	[selectedContentView setFrame:b];
+}
+
+- (void)setNeedsDisplay {
+	[super setNeedsDisplay];
+	[contentView setNeedsDisplay];
+
+	if([self isHighlighted] || [self isSelected]) {
+		[selectedContentView setNeedsDisplay];
+	}
+}
+
+- (void)setNeedsDisplayInRect:(CGRect)rect {
+	[super setNeedsDisplayInRect:rect];
+	[contentView setNeedsDisplayInRect:rect];
+
+	if([self isHighlighted] || [self isSelected]) {
+		[selectedContentView setNeedsDisplayInRect:rect];
+	}
+}
+
+- (void)layoutSubviews {
+	[super layoutSubviews];
+	self.contentView.hidden = YES;
+	[self.contentView removeFromSuperview];
+}
+
+- (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
+	return;
+}
+@end
+
+/* }}} */
+
 /* }}} */
 
 /* Constants {{{ */
@@ -733,6 +883,23 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* News {{{ */
 
+@interface NewsTableViewCell : ABTableViewCell {
+	UIImage *$newsImage;
+	NSString *$newsTitle;
+	NSString *$newsSubtitle;
+}
+
+@property(nonatomic, retain) UIImage *newsImage;
+@property(nonatomic, retain) NSString *newsTitle;
+@property(nonatomic, retain) NSString *newsSubtitle;
+@end
+
+@interface NewsIndexViewController : UIViewController
+@end
+
+@interface NewsItemViewController : UIViewController
+@end
+
 @interface NewsViewController : UITableViewController {
 	UITableView *$tableView;
 	UITableViewCell *$loadingCell;
@@ -774,7 +941,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* }}} */
 
-
 /* App Delegate {{{ */
 
 @interface AppDelegate : NSObject <UIApplicationDelegate> {
@@ -809,7 +975,15 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
         [label_ setText:@"Loading..."];
         [container_ addSubview:label_];
         
-        CGSize viewsize = frame.size;
+        [self addSubview:container_];
+    } return self;
+}
+
+- (void)layoutSubviews {
+	NSLog(@"LAYOUT SUBVIEWS");
+	[super layoutSubviews];
+
+        CGSize viewsize = [self bounds].size;
         CGSize spinnersize = [spinner_ bounds].size;
         CGSize textsize = [[label_ text] sizeWithFont:[label_ font]];
         float bothwidth = spinnersize.width + textsize.width + 5.0f;
@@ -818,6 +992,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
             CGPointMake(floorf((viewsize.width / 2) - (bothwidth / 2)), floorf((viewsize.height / 2) - (spinnersize.height / 2))),
             CGSizeMake(bothwidth, spinnersize.height)
         };
+	NSLog(@"containrect: %@", NSStringFromCGRect(containrect));
         CGRect textrect = {
             CGPointMake(spinnersize.width + 5.0f, floorf((spinnersize.height / 2) - (textsize.height / 2))),
             textsize
@@ -829,9 +1004,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
         
         [container_ setFrame:containrect];
         [spinner_ setFrame:spinrect];
-        [label_ setFrame:textrect];
-        [self addSubview:container_];
-    } return self;
+        [label_ setFrame:textrect];	
 }
 
 - (void)dealloc {
@@ -1407,6 +1580,16 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* News Controller {{{ */
 
+@implementation NewsIndexViewController
+@end
+
+@implementation NewsItemViewController
+- (id)initWithURL:(NSURL *)url {
+	if ((self = [super init])) {}
+	return self;
+}
+@end
+
 @implementation NewsViewController
 - (id)init {
 	if ((self = [super init])) {
@@ -1419,17 +1602,21 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)loadView {
 	$tableView = [[UITableView alloc] initWithFrame:[[UIScreen mainScreen] applicationFrame] style:UITableViewStylePlain];
+	[$tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
 	[$tableView setScrollEnabled:NO];
 	[self setTableView:$tableView];
 
 	$loadingCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-	LoadingIndicatorView *loadingIndicatorView = [[[LoadingIndicatorView alloc] initWithFrame:CGRectMake(0, 0, 200, 50)] autorelease];
+	LoadingIndicatorView *loadingIndicatorView = [[[LoadingIndicatorView alloc] initWithFrame:[[UIScreen mainScreen] applicationFrame]] autorelease];
 	[loadingIndicatorView setCenter:[$loadingCell center]];
+	[loadingIndicatorView setTag:1];
 	[$loadingCell addSubview:loadingIndicatorView];
 }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	
+	[self setTitle:@"Notícias"];
 
 	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 		NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
@@ -1441,12 +1628,17 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			XMLElement *span = [banner firstElementMatchingPath:@".//div/span"];
 			XMLElement *a = [banner firstElementMatchingPath:@".//a"];
 			
+			XMLElement *title = [banner firstElementMatchingPath:@".//div/h2/a"];
+			XMLElement *subtitle = [banner firstElementMatchingPath:@".//div/p/a"];
+
 			XMLElement *img = [banner firstElementMatchingPath:@".//a/img"];
 			UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[kPortoRootURL stringByAppendingString:[[img attributes] objectForKey:@"src"]]]]];
-			
+
 			NSDictionary *result = [NSDictionary dictionaryWithObjectsAndKeys:
 				[span content], @"Porto",
 				[[a attributes] objectForKey:@"href"], @"Link",
+				[title content], @"Title",
+				[subtitle content], @"Subtitle",
 				image, @"Image",
 				nil];
 			[$imageData addObject:result];
@@ -1454,10 +1646,20 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 		NSLog(@"ARRY %@", $imageData);
 		
+		NSDictionary *more = [NSDictionary dictionaryWithObjectsAndKeys:
+			@"Arquivo", @"Porto",
+			@"$AconteceNoPorto", @"Link",
+			@"Acontece no Porto", @"Title",
+			@"Veja aqui um catálogo de todas as notícias arquivadas.", @"Subtitle",
+			[UIImage imageNamed:@"acontece_no_porto.gif"], @"Image",
+			nil];
+		[$imageData addObject:more];
+		
 		$isLoading = NO;
-
-		[$tableView setScrollEnabled:YES];
-		[$tableView reloadData];
+		dispatch_sync(dispatch_get_main_queue(), ^{
+			[$tableView setScrollEnabled:YES];
+			[$tableView reloadData];
+		});
 	});
 }
 
@@ -1474,21 +1676,30 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	return $isLoading ? [[self tableView] bounds].size.height : 70.f;
+	if ($isLoading) return [[self tableView] bounds].size.height;
+
+	NSString *subtitle = [[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Subtitle"];
+	CGSize subtitleSize = [subtitle sizeWithFont:[UIFont systemFontOfSize:16.f] constrainedToSize:CGSizeMake([tableView bounds].size.width - 6.f, CGFLOAT_MAX)];
+	return 160.f + subtitleSize.height;
+}
+
+- (BOOL)tableView:(UITableView *)tableView shouldHighlightRowAtIndexPath:(NSIndexPath *)indexPath {
+	return !$isLoading;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	if ($isLoading) return $loadingCell;
 	
 	static NSString *cellIdentifier = @"PortoNewsCellIdentifier";
-	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+	NewsTableViewCell *cell = (NewsTableViewCell *)[tableView dequeueReusableCellWithIdentifier:cellIdentifier];
 	if (cell == nil) {
-		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier] autorelease];
-		
-		UIImageView *imageView = [[[UIImageView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 70.f)] autorelease];
-		[imageView setImage:[[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Image"]];
-		[[cell contentView] addSubview:imageView];
+		cell = [[[NewsTableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier] autorelease];
 	}
+	
+	[cell setNewsImage:[[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Image"]];
+	[cell setNewsTitle:[[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Title"]];
+	[cell setNewsSubtitle:[[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Subtitle"]];
+	[cell setNeedsDisplay];
 
 	return cell;
 }
@@ -1500,9 +1711,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	if ([text isEqualToString:@""]) text = @"Institucional";
 
 	UIView *view = [[[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 30.f)] autorelease];
-	[view setBackgroundColor:[UIColor redColor]];
+	[view setBackgroundColor:UIColorFromHexWithAlpha(/*0x34333D*/0x203259, 1.f)];
 	
-	UILabel *label = [[[UILabel alloc] initWithFrame:CGRectMake(10.f, 3.f, [tableView bounds].size.width - 12.f, 24.f)] autorelease];
+	UILabel *label = [[[UILabel alloc] initWithFrame:CGRectMake(5.f, 3.f, [tableView bounds].size.width - 12.f, 24.f)] autorelease];
 	[label setBackgroundColor:[UIColor clearColor]];
 	[label setTextColor:[UIColor whiteColor]];
 	[label setFont:[UIFont systemFontOfSize:19.f]];
@@ -1512,10 +1723,96 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return view;
 }
 
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	if ($isLoading) return;
+	
+	NSString *link = [[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Link"];
+	if ([link isEqualToString:@"$AconteceNoPorto"]) {
+		NewsIndexViewController *indexViewController = [[[NewsIndexViewController alloc] init] autorelease];
+		[[self navigationController] pushViewController:indexViewController animated:YES];
+	}
+	else {
+		NewsItemViewController *itemViewController = [[[NewsItemViewController alloc] initWithURL:[NSURL URLWithString:link]] autorelease];
+		[[self navigationController] pushViewController:itemViewController animated:YES];
+	}
+
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
 - (void)dealloc {
 	[$tableView release];
 	[$loadingCell release];
 	[$imageData release];
+
+	[super dealloc];
+}
+@end
+
+@implementation NewsTableViewCell
+@synthesize newsImage = $newsImage, newsTitle = $newsTitle, newsSubtitle = $newsSubtitle;
+
+- (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
+	CGContextRef context = UIGraphicsGetCurrentContext();
+
+	[[UIColor whiteColor] setFill];
+	CGContextFillRect(context, rect);
+	
+	[$newsImage drawInRect:CGRectMake(0.f, 0.f, [self bounds].size.width, 130.f)];
+
+	CGColorRef textColor = [[UIColor blackColor] CGColor];
+
+	NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
+	CTFontRef bodyFont = CTFontCreateWithName((CFStringRef)systemFont, 16.f, NULL);
+	CTFontRef headFont = CTFontCreateCopyWithSymbolicTraits(bodyFont, 18.f, NULL, kCTFontBoldTrait, kCTFontBoldTrait);
+
+	NSDictionary *fontAttributes = [NSDictionary dictionaryWithObjectsAndKeys:
+		(id)bodyFont, (id)kCTFontAttributeName,
+		textColor, (id)kCTForegroundColorAttributeName,
+		nil];
+	NSDictionary *boldFontAttributes = [NSDictionary dictionaryWithObjectsAndKeys:
+		(id)headFont, (id)kCTFontAttributeName,
+		textColor, (id)kCTForegroundColorAttributeName,
+		nil];
+	CFRelease(bodyFont);
+	CFRelease(headFont);
+	
+	NSAttributedString *titleString = [[NSAttributedString alloc] initWithString:$newsTitle attributes:boldFontAttributes];
+	NSAttributedString *subtitleString = [[NSAttributedString alloc] initWithString:$newsSubtitle attributes:fontAttributes];
+
+	CTLineRef line = CTLineCreateWithAttributedString((CFAttributedStringRef)titleString);
+	[titleString release];
+	
+	// XXX: Why is the text upside down?
+	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
+	CGContextTranslateCTM(context, 0, [self bounds].size.height);
+	CGContextScaleCTM(context, 1.0, -1.0);
+	
+	CGContextSetTextPosition(context, 5.f, [self bounds].size.height - 150.f);
+	CTLineDraw(line, context);
+	CFRelease(line);
+
+	CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString((CFAttributedStringRef)subtitleString);
+	[subtitleString release];
+	
+	CGMutablePathRef path = CGPathCreateMutable();
+	CGPathAddRect(path, NULL, CGRectMake(5.f, 6.f, [self bounds].size.width - 10.f, [self bounds].size.height - 160.f));
+	CTFrameRef frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
+	CFRelease(framesetter);
+
+	CGContextSetTextPosition(context, 0.f, 0.f); // idk if i need this but it works
+	CTFrameDraw(frame, context);
+	CFRelease(frame);
+
+	if (highlighted) {
+		[UIColorFromHexWithAlpha(0x7c7c7c, 0.4) setFill];
+		CGContextFillRect(context, rect);
+	}	
+}
+
+- (void)dealloc {
+	[$newsImage release];
+	[$newsTitle release];
+	[$newsSubtitle release];
 
 	[super dealloc];
 }
@@ -1576,7 +1873,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	$window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
 	
 	NewsViewController *newsViewController = [[[NewsViewController alloc] init] autorelease];
-	[newsViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:nil tag:0] autorelease]];
+	UINavigationController *newsNavController = [[[UINavigationController alloc] initWithRootViewController:newsViewController] autorelease];
+	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:nil tag:0] autorelease]];
 
 	GradesViewController *gradesViewController = [[[GradesViewController alloc] init] autorelease];
 	[gradesViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:nil tag:0] autorelease]];
@@ -1591,7 +1889,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[accountViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Conta" image:nil tag:0] autorelease]];
 
 	NSArray *controllers = [NSArray arrayWithObjects:
-		newsViewController,
+		newsNavController,
 		gradesViewController,
 		papersViewController,
 		servicesViewController,

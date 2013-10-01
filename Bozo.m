@@ -9,7 +9,8 @@
 /* Credits {{{
 
 Personal thanks:
-- Guilherme Stark
+- Dustin Howett
+- Guilherme (Lima) Stark
 - Max Shavrick
  
 Project Thanks:
@@ -17,7 +18,7 @@ Project Thanks:
 - MobileCydia.mm (goes without saying)
 
 Code taken from third parties:
-- XML classes were reproduced from Grant Paul (chpwn)'s HNKit.
+- XMLDocument, XMLElement were reproduced from Grant Paul (chpwn)'s HNKit.
 (c) 2011 Xuzz Productions LLC
 
 - LoginController, LoadingIndicatorView were changed minorly from Grant Paul (chpwn)'s news:yc.
@@ -26,8 +27,11 @@ Code taken from third parties:
 - KeychainItemWrapper was reproduced from Apple's GenericKeychain sample project.
 (c) 2010 Apple Inc.
 
-- ABTableViewCell was reproduced from atebits.com's blog post, now on enormego's github repo.
+- ABTableViewCell was reproduced from enormego's github repo.
 (c) 2008 Loren Brichter
+
+- GTMNSStringHTMLAdditions category was taken from google-toolbox-for-mac.
+(c) 2006-2008 Google Inc.
 
 }}} */
 
@@ -38,12 +42,6 @@ Code taken from third parties:
 /* }}} */
 
 /* External {{{ */
-
-/* URL Encoding {{{ */
-static NSString *NSStringURLEncode(NSString *string) {
-	return [(NSString *)CFURLCreateStringByAddingPercentEscapes(NULL, (CFStringRef)string, NULL, CFSTR("!*'();:@&;=+$,/%?#[]"), kCFStringEncodingUTF8) autorelease];
-}
-/* }}} */
 
 /* Keychain {{{ */
 @interface KeychainItemWrapper : NSObject {
@@ -724,6 +722,553 @@ static int XMLElementOutputCloseCallback(void *context) {
 
 /* }}} */
 
+/* HTML NSString {{{ */
+
+@interface NSString (GTMNSStringHTMLAdditions)
+- (NSString *)gtm_stringByEscapingForHTML;
+- (NSString *)gtm_stringByEscapingForAsciiHTML;
+- (NSString *)gtm_stringByUnescapingFromHTML;
+@end
+
+typedef struct {
+  NSString *escapeSequence;
+  unichar uchar;
+} HTMLEscapeMap;
+
+// Taken from http://www.w3.org/TR/xhtml1/dtds.html#a_dtd_Special_characters
+// Ordered by uchar lowest to highest for bsearching
+static HTMLEscapeMap gAsciiHTMLEscapeMap[] = {
+  // A.2.2. Special characters
+  { @"&quot;", 34 },
+  { @"&amp;", 38 },
+  { @"&apos;", 39 },
+  { @"&lt;", 60 },
+  { @"&gt;", 62 },
+  
+    // A.2.1. Latin-1 characters
+  { @"&nbsp;", 160 }, 
+  { @"&iexcl;", 161 }, 
+  { @"&cent;", 162 }, 
+  { @"&pound;", 163 }, 
+  { @"&curren;", 164 }, 
+  { @"&yen;", 165 }, 
+  { @"&brvbar;", 166 }, 
+  { @"&sect;", 167 }, 
+  { @"&uml;", 168 }, 
+  { @"&copy;", 169 }, 
+  { @"&ordf;", 170 }, 
+  { @"&laquo;", 171 }, 
+  { @"&not;", 172 }, 
+  { @"&shy;", 173 }, 
+  { @"&reg;", 174 }, 
+  { @"&macr;", 175 }, 
+  { @"&deg;", 176 }, 
+  { @"&plusmn;", 177 }, 
+  { @"&sup2;", 178 }, 
+  { @"&sup3;", 179 }, 
+  { @"&acute;", 180 }, 
+  { @"&micro;", 181 }, 
+  { @"&para;", 182 }, 
+  { @"&middot;", 183 }, 
+  { @"&cedil;", 184 }, 
+  { @"&sup1;", 185 }, 
+  { @"&ordm;", 186 }, 
+  { @"&raquo;", 187 }, 
+  { @"&frac14;", 188 }, 
+  { @"&frac12;", 189 }, 
+  { @"&frac34;", 190 }, 
+  { @"&iquest;", 191 }, 
+  { @"&Agrave;", 192 }, 
+  { @"&Aacute;", 193 }, 
+  { @"&Acirc;", 194 }, 
+  { @"&Atilde;", 195 }, 
+  { @"&Auml;", 196 }, 
+  { @"&Aring;", 197 }, 
+  { @"&AElig;", 198 }, 
+  { @"&Ccedil;", 199 }, 
+  { @"&Egrave;", 200 }, 
+  { @"&Eacute;", 201 }, 
+  { @"&Ecirc;", 202 }, 
+  { @"&Euml;", 203 }, 
+  { @"&Igrave;", 204 }, 
+  { @"&Iacute;", 205 }, 
+  { @"&Icirc;", 206 }, 
+  { @"&Iuml;", 207 }, 
+  { @"&ETH;", 208 }, 
+  { @"&Ntilde;", 209 }, 
+  { @"&Ograve;", 210 }, 
+  { @"&Oacute;", 211 }, 
+  { @"&Ocirc;", 212 }, 
+  { @"&Otilde;", 213 }, 
+  { @"&Ouml;", 214 }, 
+  { @"&times;", 215 }, 
+  { @"&Oslash;", 216 }, 
+  { @"&Ugrave;", 217 }, 
+  { @"&Uacute;", 218 }, 
+  { @"&Ucirc;", 219 }, 
+  { @"&Uuml;", 220 }, 
+  { @"&Yacute;", 221 }, 
+  { @"&THORN;", 222 }, 
+  { @"&szlig;", 223 }, 
+  { @"&agrave;", 224 }, 
+  { @"&aacute;", 225 }, 
+  { @"&acirc;", 226 }, 
+  { @"&atilde;", 227 }, 
+  { @"&auml;", 228 }, 
+  { @"&aring;", 229 }, 
+  { @"&aelig;", 230 }, 
+  { @"&ccedil;", 231 }, 
+  { @"&egrave;", 232 }, 
+  { @"&eacute;", 233 }, 
+  { @"&ecirc;", 234 }, 
+  { @"&euml;", 235 }, 
+  { @"&igrave;", 236 }, 
+  { @"&iacute;", 237 }, 
+  { @"&icirc;", 238 }, 
+  { @"&iuml;", 239 }, 
+  { @"&eth;", 240 }, 
+  { @"&ntilde;", 241 }, 
+  { @"&ograve;", 242 }, 
+  { @"&oacute;", 243 }, 
+  { @"&ocirc;", 244 }, 
+  { @"&otilde;", 245 }, 
+  { @"&ouml;", 246 }, 
+  { @"&divide;", 247 }, 
+  { @"&oslash;", 248 }, 
+  { @"&ugrave;", 249 }, 
+  { @"&uacute;", 250 }, 
+  { @"&ucirc;", 251 }, 
+  { @"&uuml;", 252 }, 
+  { @"&yacute;", 253 }, 
+  { @"&thorn;", 254 }, 
+  { @"&yuml;", 255 },
+  
+  // A.2.2. Special characters cont'd
+  { @"&OElig;", 338 },
+  { @"&oelig;", 339 },
+  { @"&Scaron;", 352 },
+  { @"&scaron;", 353 },
+  { @"&Yuml;", 376 },
+
+  // A.2.3. Symbols
+  { @"&fnof;", 402 }, 
+
+  // A.2.2. Special characters cont'd
+  { @"&circ;", 710 },
+  { @"&tilde;", 732 },
+  
+  // A.2.3. Symbols cont'd
+  { @"&Alpha;", 913 }, 
+  { @"&Beta;", 914 }, 
+  { @"&Gamma;", 915 }, 
+  { @"&Delta;", 916 }, 
+  { @"&Epsilon;", 917 }, 
+  { @"&Zeta;", 918 }, 
+  { @"&Eta;", 919 }, 
+  { @"&Theta;", 920 }, 
+  { @"&Iota;", 921 }, 
+  { @"&Kappa;", 922 }, 
+  { @"&Lambda;", 923 }, 
+  { @"&Mu;", 924 }, 
+  { @"&Nu;", 925 }, 
+  { @"&Xi;", 926 }, 
+  { @"&Omicron;", 927 }, 
+  { @"&Pi;", 928 }, 
+  { @"&Rho;", 929 }, 
+  { @"&Sigma;", 931 }, 
+  { @"&Tau;", 932 }, 
+  { @"&Upsilon;", 933 }, 
+  { @"&Phi;", 934 }, 
+  { @"&Chi;", 935 }, 
+  { @"&Psi;", 936 }, 
+  { @"&Omega;", 937 }, 
+  { @"&alpha;", 945 }, 
+  { @"&beta;", 946 }, 
+  { @"&gamma;", 947 }, 
+  { @"&delta;", 948 }, 
+  { @"&epsilon;", 949 }, 
+  { @"&zeta;", 950 }, 
+  { @"&eta;", 951 }, 
+  { @"&theta;", 952 }, 
+  { @"&iota;", 953 }, 
+  { @"&kappa;", 954 }, 
+  { @"&lambda;", 955 }, 
+  { @"&mu;", 956 }, 
+  { @"&nu;", 957 }, 
+  { @"&xi;", 958 }, 
+  { @"&omicron;", 959 }, 
+  { @"&pi;", 960 }, 
+  { @"&rho;", 961 }, 
+  { @"&sigmaf;", 962 }, 
+  { @"&sigma;", 963 }, 
+  { @"&tau;", 964 }, 
+  { @"&upsilon;", 965 }, 
+  { @"&phi;", 966 }, 
+  { @"&chi;", 967 }, 
+  { @"&psi;", 968 }, 
+  { @"&omega;", 969 }, 
+  { @"&thetasym;", 977 }, 
+  { @"&upsih;", 978 }, 
+  { @"&piv;", 982 }, 
+ 
+  // A.2.2. Special characters cont'd
+  { @"&ensp;", 8194 },
+  { @"&emsp;", 8195 },
+  { @"&thinsp;", 8201 },
+  { @"&zwnj;", 8204 },
+  { @"&zwj;", 8205 },
+  { @"&lrm;", 8206 },
+  { @"&rlm;", 8207 },
+  { @"&ndash;", 8211 },
+  { @"&mdash;", 8212 },
+  { @"&lsquo;", 8216 },
+  { @"&rsquo;", 8217 },
+  { @"&sbquo;", 8218 },
+  { @"&ldquo;", 8220 },
+  { @"&rdquo;", 8221 },
+  { @"&bdquo;", 8222 },
+  { @"&dagger;", 8224 },
+  { @"&Dagger;", 8225 },
+    // A.2.3. Symbols cont'd  
+  { @"&bull;", 8226 }, 
+  { @"&hellip;", 8230 }, 
+ 
+  // A.2.2. Special characters cont'd
+  { @"&permil;", 8240 },
+  
+  // A.2.3. Symbols cont'd  
+  { @"&prime;", 8242 }, 
+  { @"&Prime;", 8243 }, 
+
+  // A.2.2. Special characters cont'd
+  { @"&lsaquo;", 8249 },
+  { @"&rsaquo;", 8250 },
+
+  // A.2.3. Symbols cont'd  
+  { @"&oline;", 8254 }, 
+  { @"&frasl;", 8260 }, 
+  
+  // A.2.2. Special characters cont'd
+  { @"&euro;", 8364 },
+
+  // A.2.3. Symbols cont'd  
+  { @"&image;", 8465 },
+  { @"&weierp;", 8472 }, 
+  { @"&real;", 8476 }, 
+  { @"&trade;", 8482 }, 
+  { @"&alefsym;", 8501 }, 
+  { @"&larr;", 8592 }, 
+  { @"&uarr;", 8593 }, 
+  { @"&rarr;", 8594 }, 
+  { @"&darr;", 8595 }, 
+  { @"&harr;", 8596 }, 
+  { @"&crarr;", 8629 }, 
+  { @"&lArr;", 8656 }, 
+  { @"&uArr;", 8657 }, 
+  { @"&rArr;", 8658 }, 
+  { @"&dArr;", 8659 }, 
+  { @"&hArr;", 8660 }, 
+  { @"&forall;", 8704 }, 
+  { @"&part;", 8706 }, 
+  { @"&exist;", 8707 }, 
+  { @"&empty;", 8709 }, 
+  { @"&nabla;", 8711 }, 
+  { @"&isin;", 8712 }, 
+  { @"&notin;", 8713 }, 
+  { @"&ni;", 8715 }, 
+  { @"&prod;", 8719 }, 
+  { @"&sum;", 8721 }, 
+  { @"&minus;", 8722 }, 
+  { @"&lowast;", 8727 }, 
+  { @"&radic;", 8730 }, 
+  { @"&prop;", 8733 }, 
+  { @"&infin;", 8734 }, 
+  { @"&ang;", 8736 }, 
+  { @"&and;", 8743 }, 
+  { @"&or;", 8744 }, 
+  { @"&cap;", 8745 }, 
+  { @"&cup;", 8746 }, 
+  { @"&int;", 8747 }, 
+  { @"&there4;", 8756 }, 
+  { @"&sim;", 8764 }, 
+  { @"&cong;", 8773 }, 
+  { @"&asymp;", 8776 }, 
+  { @"&ne;", 8800 }, 
+  { @"&equiv;", 8801 }, 
+  { @"&le;", 8804 }, 
+  { @"&ge;", 8805 }, 
+  { @"&sub;", 8834 }, 
+  { @"&sup;", 8835 }, 
+  { @"&nsub;", 8836 }, 
+  { @"&sube;", 8838 }, 
+  { @"&supe;", 8839 }, 
+  { @"&oplus;", 8853 }, 
+  { @"&otimes;", 8855 }, 
+  { @"&perp;", 8869 }, 
+  { @"&sdot;", 8901 }, 
+  { @"&lceil;", 8968 }, 
+  { @"&rceil;", 8969 }, 
+  { @"&lfloor;", 8970 }, 
+  { @"&rfloor;", 8971 }, 
+  { @"&lang;", 9001 }, 
+  { @"&rang;", 9002 }, 
+  { @"&loz;", 9674 }, 
+  { @"&spades;", 9824 }, 
+  { @"&clubs;", 9827 }, 
+  { @"&hearts;", 9829 }, 
+  { @"&diams;", 9830 }
+};
+
+// Taken from http://www.w3.org/TR/xhtml1/dtds.html#a_dtd_Special_characters
+// This is table A.2.2 Special Characters
+static HTMLEscapeMap gUnicodeHTMLEscapeMap[] = {
+  // C0 Controls and Basic Latin
+  { @"&quot;", 34 },
+  { @"&amp;", 38 },
+  { @"&apos;", 39 },
+  { @"&lt;", 60 },
+  { @"&gt;", 62 },
+
+  // Latin Extended-A
+  { @"&OElig;", 338 },
+  { @"&oelig;", 339 },
+  { @"&Scaron;", 352 },
+  { @"&scaron;", 353 },
+  { @"&Yuml;", 376 },
+  
+  // Spacing Modifier Letters
+  { @"&circ;", 710 },
+  { @"&tilde;", 732 },
+    
+  // General Punctuation
+  { @"&ensp;", 8194 },
+  { @"&emsp;", 8195 },
+  { @"&thinsp;", 8201 },
+  { @"&zwnj;", 8204 },
+  { @"&zwj;", 8205 },
+  { @"&lrm;", 8206 },
+  { @"&rlm;", 8207 },
+  { @"&ndash;", 8211 },
+  { @"&mdash;", 8212 },
+  { @"&lsquo;", 8216 },
+  { @"&rsquo;", 8217 },
+  { @"&sbquo;", 8218 },
+  { @"&ldquo;", 8220 },
+  { @"&rdquo;", 8221 },
+  { @"&bdquo;", 8222 },
+  { @"&dagger;", 8224 },
+  { @"&Dagger;", 8225 },
+  { @"&permil;", 8240 },
+  { @"&lsaquo;", 8249 },
+  { @"&rsaquo;", 8250 },
+  { @"&euro;", 8364 },
+};
+
+
+// Utility function for Bsearching table above
+static int EscapeMapCompare(const void *ucharVoid, const void *mapVoid) {
+  const unichar *uchar = (const unichar*)ucharVoid;
+  const HTMLEscapeMap *map = (const HTMLEscapeMap*)mapVoid;
+  int val;
+  if (*uchar > map->uchar) {
+    val = 1;
+  } else if (*uchar < map->uchar) {
+    val = -1;
+  } else {
+    val = 0;
+  }
+  return val;
+}
+
+@implementation NSString (GTMNSStringHTMLAdditions)
+- (NSString *)gtm_stringByEscapingHTMLUsingTable:(HTMLEscapeMap*)table 
+                                          ofSize:(NSUInteger)size 
+                                 escapingUnicode:(BOOL)escapeUnicode {  
+  NSUInteger length = [self length];
+  if (!length) {
+    return self;
+  }
+  
+  NSMutableString *finalString = [NSMutableString string];
+  NSMutableData *data2 = [NSMutableData dataWithCapacity:sizeof(unichar) * length];
+
+  // this block is common between GTMNSString+HTML and GTMNSString+XML but
+  // it's so short that it isn't really worth trying to share.
+  const unichar *buffer = CFStringGetCharactersPtr((CFStringRef)self);
+  if (!buffer) {
+    // We want this buffer to be autoreleased.
+    NSMutableData *data = [NSMutableData dataWithLength:length * sizeof(UniChar)];
+    if (!data) {
+      // COV_NF_START  - Memory fail case
+      return nil;
+      // COV_NF_END
+    }
+    [self getCharacters:[data mutableBytes]];
+    buffer = [data bytes];
+  }
+
+  if (!buffer || !data2) {
+    // COV_NF_START
+    return nil;
+    // COV_NF_END
+  }
+  
+  unichar *buffer2 = (unichar *)[data2 mutableBytes];
+  
+  NSUInteger buffer2Length = 0;
+  
+  for (NSUInteger i = 0; i < length; ++i) {
+    HTMLEscapeMap *val = bsearch(&buffer[i], table, 
+                                 size / sizeof(HTMLEscapeMap), 
+                                 sizeof(HTMLEscapeMap), EscapeMapCompare);
+    if (val || (escapeUnicode && buffer[i] > 127)) {
+      if (buffer2Length) {
+        CFStringAppendCharacters((CFMutableStringRef)finalString, 
+                                 buffer2, 
+                                 buffer2Length);
+        buffer2Length = 0;
+      }
+      if (val) {
+        [finalString appendString:val->escapeSequence];
+      }
+      else {
+        NSAssert(escapeUnicode && buffer[i] > 127, @"Illegal Character");
+        [finalString appendFormat:@"&#%d;", buffer[i]];
+      }
+    } else {
+      buffer2[buffer2Length] = buffer[i];
+      buffer2Length += 1;
+    }
+  }
+  if (buffer2Length) {
+    CFStringAppendCharacters((CFMutableStringRef)finalString, 
+                             buffer2, 
+                             buffer2Length);
+  }
+  return finalString;
+}
+
+- (NSString *)gtm_stringByEscapingForHTML {
+  return [self gtm_stringByEscapingHTMLUsingTable:gUnicodeHTMLEscapeMap 
+                                           ofSize:sizeof(gUnicodeHTMLEscapeMap) 
+                                  escapingUnicode:NO];
+} // gtm_stringByEscapingHTML
+
+- (NSString *)gtm_stringByEscapingForAsciiHTML {
+  return [self gtm_stringByEscapingHTMLUsingTable:gAsciiHTMLEscapeMap 
+                                           ofSize:sizeof(gAsciiHTMLEscapeMap) 
+                                  escapingUnicode:YES];
+} // gtm_stringByEscapingAsciiHTML
+
+- (NSString *)gtm_stringByUnescapingFromHTML {
+  NSRange range = NSMakeRange(0, [self length]);
+  NSRange subrange = [self rangeOfString:@"&" options:NSBackwardsSearch range:range];
+  
+  // if no ampersands, we've got a quick way out
+  if (subrange.length == 0) return self;
+  NSMutableString *finalString = [NSMutableString stringWithString:self];
+  do {
+    NSRange semiColonRange = NSMakeRange(subrange.location, NSMaxRange(range) - subrange.location);
+    semiColonRange = [self rangeOfString:@";" options:0 range:semiColonRange];
+    range = NSMakeRange(0, subrange.location);
+    // if we don't find a semicolon in the range, we don't have a sequence
+    if (semiColonRange.location == NSNotFound) {
+      continue;
+    }
+    NSRange escapeRange = NSMakeRange(subrange.location, semiColonRange.location - subrange.location + 1);
+    NSString *escapeString = [self substringWithRange:escapeRange];
+    NSUInteger length = [escapeString length];
+    // a squence must be longer than 3 (&lt;) and less than 11 (&thetasym;)
+    if (length > 3 && length < 11) {
+      if ([escapeString characterAtIndex:1] == '#') {
+        unichar char2 = [escapeString characterAtIndex:2];
+        if (char2 == 'x' || char2 == 'X') {
+          // Hex escape squences &#xa3;
+          NSString *hexSequence = [escapeString substringWithRange:NSMakeRange(3, length - 4)];
+          NSScanner *scanner = [NSScanner scannerWithString:hexSequence];
+          unsigned value;
+          if ([scanner scanHexInt:&value] && 
+              value < USHRT_MAX &&
+              value > 0 
+              && [scanner scanLocation] == length - 4) {
+            unichar uchar = (unichar)value;
+            NSString *charString = [NSString stringWithCharacters:&uchar length:1];
+            [finalString replaceCharactersInRange:escapeRange withString:charString];
+          }
+
+        } else {
+          // Decimal Sequences &#123;
+          NSString *numberSequence = [escapeString substringWithRange:NSMakeRange(2, length - 3)];
+          NSScanner *scanner = [NSScanner scannerWithString:numberSequence];
+          int value;
+          if ([scanner scanInt:&value] && 
+              value < USHRT_MAX &&
+              value > 0 
+              && [scanner scanLocation] == length - 3) {
+            unichar uchar = (unichar)value;
+            NSString *charString = [NSString stringWithCharacters:&uchar length:1];
+            [finalString replaceCharactersInRange:escapeRange withString:charString];
+          }
+        }
+      } else {
+        // "standard" sequences
+        for (unsigned i = 0; i < sizeof(gAsciiHTMLEscapeMap) / sizeof(HTMLEscapeMap); ++i) {
+          if ([escapeString isEqualToString:gAsciiHTMLEscapeMap[i].escapeSequence]) {
+            [finalString replaceCharactersInRange:escapeRange withString:[NSString stringWithCharacters:&gAsciiHTMLEscapeMap[i].uchar length:1]];
+            break;
+          }
+        }
+      }
+    }
+  } while ((subrange = [self rangeOfString:@"&" options:NSBackwardsSearch range:range]).length != 0);
+  return finalString;
+} // gtm_stringByUnescapingHTML
+@end
+
+/* }}} */
+
+/* }}} */
+
+/* Helpers {{{ */
+
+/* URL Encoding {{{ */
+static NSString *NSStringURLEncode(NSString *string) {
+	return [(NSString *)CFURLCreateStringByAddingPercentEscapes(NULL, (CFStringRef)string, NULL, CFSTR("!*'();:@&;=+$,/%?#[]"), kCFStringEncodingUTF8) autorelease];
+}
+
+static NSString *NSStringURLDecode(NSString *string) {
+	return [(NSString *)CFURLCreateStringByReplacingPercentEscapesUsingEncoding(NULL, (CFStringRef)string, CFSTR(""), kCFStringEncodingUTF8) autorelease];
+}
+/* }}} */
+
+/* Unescaping HTML {{{ */
+static NSString *RemoveHTMLTags(NSString *content) {
+	NSString *newString = [[content copy] autorelease];
+	
+	NSRange range;
+	while ((range = [newString rangeOfString:@"<[^>]+>" options:NSRegularExpressionSearch]).location != NSNotFound)
+		newString = [newString stringByReplacingCharactersInRange:range withString:@""];
+	
+	return newString;
+}
+/* }}} */
+
+/* News {{{ */
+static NSString *ParseNewsParagraph(NSString *paragraph) {
+	NSString *unescaped = [RemoveHTMLTags(paragraph) gtm_stringByUnescapingFromHTML];
+	return unescaped;
+}
+/* }}} */
+
+/* Caching {{{ */
+
+static NSMutableDictionary *cache = nil;
+static inline void InitCache() { cache = [[NSMutableDictionary alloc] init]; }
+static inline id Cached(NSString *key) { return [cache objectForKey:key]; }
+static inline void Cache(NSString *key, id object) { [cache setObject:object forKey:key]; }
+
+/* }}} */
+
 /* }}} */
 
 /* Constants {{{ */
@@ -733,6 +1278,9 @@ static int XMLElementOutputCloseCallback(void *context) {
 /* }}} */
 
 /* Macros {{{ */
+
+#define NUMBER_YES [NSNumber numberWithBool:YES]
+#define NUMBER_NO [NSNumber numberWithBool:NO]
 
 #ifdef DEBUG
 #define debug(...) NSLog(__VA_ARGS__)
@@ -807,8 +1355,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)setSessionInfo:(NSDictionary *)sessionInfo;
 
 - (void)loadSessionWithHandler:(void(^)(BOOL, NSError *))handler;
-
-/* do stuff like "API Call to Something" from here */
+- (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error;
 @end
 
 /* }}} */
@@ -897,7 +1444,44 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface NewsIndexViewController : UIViewController
 @end
 
-@interface NewsItemViewController : UIViewController
+@interface NewsItemView : UIView {
+	CGSize sectionSize;
+	CGSize titleSize;
+	CGSize subtitleSize;
+	
+	CGColorRef textColor;
+	CTFontRef sectionFont;
+	CTFontRef titleFont;
+	CTFontRef subtitleFont;
+	CTFontRef bodyFont;
+
+	CTFramesetterRef sectionFramesetter;
+	CTFramesetterRef titleFramesetter;
+	CTFramesetterRef subtitleFramesetter;
+	
+	NSArray *contents;
+	CTFramesetterRef *bodyFramesetters;
+	NSUInteger bodyFramesettersCount;
+	NSUInteger imagesCount;
+	NSMutableArray *bodySizes;
+}
+- (CGFloat)heightOffset;
+- (void)setSection:(NSString *)section;
+- (void)setTitle:(NSString *)title;
+- (void)setSubtitle:(NSString *)subtitle;
+- (void)setContents:(NSArray *)contents;
+@end
+
+@interface NewsItemViewController : UIViewController <UIWebViewDelegate> {
+	NSURL *$url;
+	
+	BOOL $isLoading;
+
+	LoadingIndicatorView *$loadingView;
+	UIScrollView *$scrollView;
+	NewsItemView *$contentView;
+	UIWebView *$webView;
+}
 @end
 
 @interface NewsViewController : UITableViewController {
@@ -913,7 +1497,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Grades {{{ */
 
-@interface GradesViewController : UIViewController
+@interface GradesViewController : UIViewController {
+	LoadingIndicatorView *$loadingView;
+	NSMutableArray *$views;
+}
 @end
 
 /* }}} */
@@ -1041,16 +1628,21 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 #define kPortoGenderCookie @"Sexo"
 #define kPortoGradeCookie @"Serie"
 #define kPortoNameCookie @"Nome"
+#define kPortoServerIdCookie @"SessionMan%5FServerId"
+#define kPortoSessionIdCookie @"SessionMan%5FSessionId"
 #define kPortoASPSessionCookie @"ASPSESSIONID"
 
 #define kPortoUsernameKey @"PortoUsernameKey"
 #define kPortoPasswordKey @"PortoPasswordKey"
 
 #define kPortoPortalKey @"PortoPortalKey"
+#define kPortoCookieNameKey @"PortoCookieNameKey"
 #define kPortoCookieKey @"PortoCookieKey"
 #define kPortoNameKey @"PortoNameKey"
 #define kPortoGradeKey @"PortoGradeKey"
 #define kPortoGenderKey @"PortoGenderKey"
+#define kPortoSessionIdKey @"PortoSessionIdKey"
+#define kPortoServerIdKey @"PortoServerIdKey"
 
 #define kPortoInfantilPortal @"/ed_infantil_new/ed_infantil.asp"
 #define kPortoNivelIPortal @"/alunos14/alunos14.asp"
@@ -1211,28 +1803,40 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)loadSessionWithHandler:(void(^)(BOOL, NSError *))handler {
 	SessionAuthenticator *authenticator = [[SessionAuthenticator alloc] initWithUsername:[$accountInfo objectForKey:kPortoUsernameKey] password:[$accountInfo objectForKey:kPortoPasswordKey]];
 	[authenticator authenticateWithHandler:^(NSArray *cookies, NSString *portal, NSError *error){
-		NSLog(@"Cookies: %@", cookies);
-		
+		NSLog(@"AUTHENTICATOR PORTAL %@", portal);
+
 		if (portal != nil) {
-			NSString *sessionCookie;
 			NSString *nameCookie;
 			NSString *gradeCookie;
 			NSString *genderCookie;
+			
+			NSString *sessionCookie;
+			NSString *sessionCookieName;
+			NSString *serverIdCookie;
+			NSString *sessionIdCookie;
 
 			for (NSHTTPCookie *cookie in cookies) {
 				NSString *name = [cookie name];
 				if ([name isEqualToString:kPortoGenderCookie]) genderCookie = [cookie value];
 				else if ([name isEqualToString:kPortoGradeCookie]) gradeCookie = [cookie value];
 				else if ([name isEqualToString:kPortoNameCookie]) nameCookie = [cookie value];
-				else if ([name hasPrefix:kPortoASPSessionCookie]) sessionCookie = [cookie value];
+				else if ([name isEqualToString:kPortoServerIdCookie]) serverIdCookie = [cookie value];
+				else if ([name isEqualToString:kPortoSessionIdCookie]) sessionIdCookie = [cookie value];
+				else if ([name hasPrefix:kPortoASPSessionCookie]) {
+					sessionCookieName = name;
+					sessionCookie = [cookie value];
+				}
 			}
 			
 			NSDictionary *sessionInfo = [NSDictionary dictionaryWithObjectsAndKeys:
 				portal, kPortoPortalKey,
+				sessionCookieName, kPortoCookieNameKey,
 				sessionCookie, kPortoCookieKey,
 				nameCookie, kPortoNameKey,
 				gradeCookie, kPortoGradeKey,
 				genderCookie, kPortoGenderKey,
+				sessionIdCookie, kPortoSessionIdKey,
+				serverIdCookie, kPortoServerIdKey,
 				nil];
 			[self setSessionInfo:sessionInfo];
 
@@ -1241,6 +1845,36 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		else handler(NO, error);
 	}];
 	[authenticator release];
+}
+
+- (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error {
+	NSHTTPCookie *aspCookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
+		@"www.educacional.com.br", NSHTTPCookieDomain,
+		@"/", NSHTTPCookiePath,
+		[[self sessionInfo] objectForKey:kPortoCookieNameKey], NSHTTPCookieName,
+		[[self sessionInfo] objectForKey:kPortoCookieKey], NSHTTPCookieValue,
+		nil]];
+	NSHTTPCookie *serverCookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
+		@"www.educacional.com.br", NSHTTPCookieDomain,
+		@"/", NSHTTPCookiePath,
+		kPortoServerIdCookie, NSHTTPCookieName,
+		[[self sessionInfo] objectForKey:kPortoServerIdKey], NSHTTPCookieValue,
+		nil]];
+	NSHTTPCookie *sessionCookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
+		@"www.educacional.com.br", NSHTTPCookieDomain,
+		@"/", NSHTTPCookiePath,
+		kPortoSessionIdCookie, NSHTTPCookieName,
+		[[self sessionInfo] objectForKey:kPortoSessionIdKey], NSHTTPCookieValue,
+		nil]];
+
+	NSDictionary *headers = [NSHTTPCookie requestHeaderFieldsWithCookies:[NSArray arrayWithObjects:aspCookie, serverCookie, sessionCookie, nil]];
+	NSLog(@"HEADERS %@", headers);
+
+	NSMutableURLRequest *urlRequest = [NSMutableURLRequest requestWithURL:url];
+	[urlRequest setAllHTTPHeaderFields:headers];
+	[urlRequest setHTTPMethod:method];
+	
+	return [NSURLConnection sendSynchronousRequest:urlRequest returningResponse:response error:error];
 }
 
 - (void)dealloc {
@@ -1583,10 +2217,372 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @implementation NewsIndexViewController
 @end
 
+@implementation NewsItemView
+
+static CTFramesetterRef CreateFramesetter(CTFontRef font, CGColorRef textColor, CFStringRef string, BOOL underlined) {
+	if (string == NULL) string = (CFStringRef)@"";
+	
+	CGFloat spacing = 0.f;
+	CTParagraphStyleSetting settings[1] = { kCTParagraphStyleSpecifierParagraphSpacingBefore, sizeof(CGFloat), &spacing };
+	CTParagraphStyleRef paragraphStyle = CTParagraphStyleCreate(settings, 1);
+	
+	int underline = underlined ? 1 : kCTUnderlineStyleNone;
+	CFNumberRef number = CFNumberCreate(NULL, kCFNumberIntType, &underline);
+
+	const CFStringRef attributeKeys[4] = { kCTFontAttributeName, kCTForegroundColorAttributeName, kCTParagraphStyleAttributeName, kCTUnderlineStyleAttributeName };
+	const CFTypeRef attributeValues[4] = { font, textColor, paragraphStyle, number };
+	CFDictionaryRef attributes = CFDictionaryCreate(NULL, (const void **)attributeKeys, (const void **)attributeValues, 4, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+
+	CFAttributedStringRef attributedString = CFAttributedStringCreate(NULL, string, attributes);
+	CFRelease(attributes);
+	CFRelease(number);
+	CFRelease(paragraphStyle);
+
+	CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString(attributedString);
+	
+	//CFRelease(paragraphStyle);
+	CFRelease(attributedString);
+
+	return framesetter;
+}
+
+static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
+	CGPathRef path = CGPathCreateWithRect(rect, NULL);
+	CTFrameRef frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
+
+	CFRelease(path);
+	return frame;
+}
+
+- (id)initWithFrame:(CGRect)frame {
+	if ((self = [super initWithFrame:frame])) {
+		sectionSize = CGSizeZero;
+		titleSize = CGSizeZero;
+		subtitleSize = CGSizeZero;
+		
+		bodyFramesettersCount = 0;
+		imagesCount = 0;
+
+		textColor = (CGColorRef)CFRetain([[UIColor blackColor] CGColor]);
+		
+		NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
+		bodyFont = CTFontCreateWithName((CFStringRef)systemFont, 15.f, NULL);
+		sectionFont = CTFontCreateWithName((CFStringRef)systemFont, 24.f, NULL);
+		titleFont = CTFontCreateCopyWithSymbolicTraits(bodyFont, 32.f, NULL, kCTFontBoldTrait, kCTFontBoldTrait);
+		subtitleFont = CTFontCreateCopyWithSymbolicTraits(bodyFont, 15.f, NULL, kCTFontItalicTrait, kCTFontItalicTrait);
+		
+		sectionFramesetter = NULL;
+		titleFramesetter = NULL;
+		subtitleFramesetter = NULL;
+		
+		bodyFramesetters = NULL;
+		bodySizes = nil;
+		contents = nil;
+	}
+
+	return self;
+}
+
+- (void)setSection:(NSString *)section {
+	if (sectionFramesetter != NULL) CFRelease(sectionFramesetter);
+	sectionFramesetter = CreateFramesetter(sectionFont, textColor, (CFStringRef)section, YES);
+}
+
+- (void)setTitle:(NSString *)title {
+	if (titleFramesetter != NULL) CFRelease(titleFramesetter);
+	titleFramesetter = CreateFramesetter(titleFont, textColor, (CFStringRef)title, NO);
+}
+
+- (void)setSubtitle:(NSString *)subtitle {
+	if (subtitleFramesetter != NULL) CFRelease(subtitleFramesetter);
+	subtitleFramesetter = CreateFramesetter(subtitleFont, textColor, (CFStringRef)[subtitle stringByReplacingOccurrencesOfString:@"\t" withString:@""], NO);
+}
+
+- (void)setContents:(NSArray *)contents_ {
+	if (bodyFramesetters != NULL) free(bodyFramesetters);
+	if (contents != nil) [contents release];
+	contents = [contents_ retain];
+
+	bodyFramesetters = calloc([contents count], sizeof(CTFramesetterRef));
+	bzero(bodyFramesetters, [contents count]);
+	
+	for (id content in contents) {
+		if ([content isKindOfClass:[NSString class]]) {
+			CTFramesetterRef framesetter = CreateFramesetter(bodyFont, textColor, (CFStringRef)content, NO);
+			bodyFramesetters[bodyFramesettersCount++] = framesetter;
+		}
+		else if ([content isKindOfClass:[UIImage class]]) imagesCount++;
+	}
+}
+
+- (CGFloat)heightOffset {
+	//return bodyFramesettersCount * CTFontGetSize(bodyFont)*96/72 + CTFontGetSize(subtitleFont)*96/72;
+	return 6 * CTFontGetSize(bodyFont)*96/72; // don't ask me why. Just don't. I don't know.
+}
+
+- (CGSize)sizeThatFits:(CGSize)size {
+	if (bodySizes != nil) [bodySizes release];
+	bodySizes = [[NSMutableArray alloc] init];
+	
+	CGFloat ret = 0.f;
+	CGFloat width = size.width;
+	
+	titleSize = CTFramesetterSuggestFrameSizeWithConstraints(titleFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(width-10.f, CGFLOAT_MAX), NULL);
+	subtitleSize = CTFramesetterSuggestFrameSizeWithConstraints(subtitleFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(width-10.f, CGFLOAT_MAX), NULL);
+	sectionSize = CTFramesetterSuggestFrameSizeWithConstraints(sectionFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(width-10.f, CGFLOAT_MAX), NULL);
+	ret += titleSize.height + subtitleSize.height + sectionSize.height/* + 3 * 5.f*/;
+	NSLog(@"ret += %f = %f", titleSize.height + subtitleSize.height + sectionSize.height, ret);
+	
+	NSUInteger framesetters = 0;
+	for (id content in contents) {
+		if ([content isKindOfClass:[NSString class]]) {
+			CTFramesetterRef framesetter = bodyFramesetters[framesetters];
+			CGSize bodySize = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, CFRangeMake(0, 0), NULL, CGSizeMake(width-10.f, CGFLOAT_MAX), NULL);
+			[bodySizes addObject:NSStringFromCGSize(bodySize)];
+
+			ret += bodySize.height /*+ 5.f*/;
+			NSLog(@"ret += %f = %f", bodySize.height, ret);
+			framesetters++;
+		}
+
+		else if ([content isKindOfClass:[UIImage class]]) {
+			UIImage *image = (UIImage *)content;
+			CGSize imageSize = [image size];
+
+			CGFloat ratio = width / imageSize.width;
+			CGFloat height = ratio * imageSize.height;
+			ret += height;
+			NSLog(@"ret += %f = %f", height, ret);
+		}
+	}
+	
+	return CGSizeMake(width, ret + imagesCount * 7.f);
+}
+
+- (void)drawRect:(CGRect)rect {
+	NSLog(@"DRAW RECT: %@", NSStringFromCGRect(rect));
+
+	CGContextRef context = UIGraphicsGetCurrentContext();
+	[[UIColor whiteColor] setFill];
+	CGContextFillRect(context, rect);
+	
+	CGContextSetTextPosition(context, 0.f, 0.f);
+	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
+	CGContextTranslateCTM(context, 0, [self bounds].size.height);
+	CGContextScaleCTM(context, 1.0, -1.0);
+	
+	NSUInteger bodyProgression = bodyFramesettersCount;
+	CGFloat startY = 0.f;
+	for (int i = [contents count]-1; i>=0; i--) {
+		if ([[contents objectAtIndex:i] isKindOfClass:[NSString class]]) {
+			CTFramesetterRef framesetter = bodyFramesetters[--bodyProgression];
+			
+			CGRect bodyRect = CGRectMake(7.f, startY, rect.size.width - 14.f, CGSizeFromString([bodySizes objectAtIndex:bodyProgression]).height);
+
+			NSLog(@"BODY RECT: %@", NSStringFromCGRect(bodyRect));
+			CTFrameRef bodyFrame = CreateFrame(framesetter, bodyRect);
+			CTFrameDraw(bodyFrame, context);
+			CFRelease(bodyFrame);
+
+			startY += bodyRect.size.height;
+		}
+
+		else if ([[contents objectAtIndex:i] isKindOfClass:[UIImage class]]) {
+			UIImage *image = (UIImage *)[contents objectAtIndex:i];
+			CGSize imageSize = [image size];
+
+			CGFloat ratio = rect.size.width / imageSize.width;
+			CGFloat height = ratio * imageSize.height;
+			
+			CGImageRef img = [image CGImage];
+			CGContextDrawImage(context, CGRectMake(0.f, startY - 7.f, rect.size.width, height), img);
+			NSLog(@"IMAGE RECT: %@", NSStringFromCGRect(CGRectMake(0.f, startY, rect.size.width, height)));
+			CFRelease(img);
+			
+			startY += height + 7.f;
+		}
+	}
+	
+	CGRect subtitleRect = CGRectMake(7.f, startY, rect.size.width - 14.f, subtitleSize.height);
+	NSLog(@"SUBTITLE %@", NSStringFromCGRect(subtitleRect));
+	startY += subtitleSize.height;
+	CGRect titleRect = CGRectMake(7.f, startY, rect.size.width - 14.f, titleSize.height);
+	NSLog(@"TITLE %@", NSStringFromCGRect(titleRect));
+	startY += titleSize.height /*+ 5.f*/;
+	CGRect sectionRect = CGRectMake(7.f, startY, rect.size.width - 14.f, sectionSize.height);
+	NSLog(@"SECTION %@", NSStringFromCGRect(sectionRect));
+	
+	CTFrameRef sectionFrame = CreateFrame(sectionFramesetter, sectionRect);
+	CTFrameRef titleFrame = CreateFrame(titleFramesetter, titleRect);
+	CTFrameRef subtitleFrame = CreateFrame(subtitleFramesetter, subtitleRect);
+	CTFrameDraw(sectionFrame, context);
+	CTFrameDraw(titleFrame, context);
+	CTFrameDraw(subtitleFrame, context);
+	CFRelease(titleFrame);
+	CFRelease(subtitleFrame);
+	CFRelease(sectionFrame);
+}
+
+- (void)dealloc {
+	CFRelease(textColor);
+	CFRelease(sectionFont);
+	CFRelease(titleFont);
+	CFRelease(subtitleFont);
+	CFRelease(bodyFont);
+	CFRelease(sectionFramesetter);
+	CFRelease(titleFramesetter);
+	CFRelease(subtitleFramesetter);
+
+	[contents release];
+	for (int i=0; i<bodyFramesettersCount; i++) CFRelease(bodyFramesetters[i]);
+	free(bodyFramesetters);
+	[bodySizes release];
+
+	[super dealloc];
+}
+@end
+
 @implementation NewsItemViewController
 - (id)initWithURL:(NSURL *)url {
-	if ((self = [super init])) {}
+	if ((self = [super init])) {
+		$url = [url retain];
+
+		$isLoading = YES;
+	}
+
 	return self;
+}
+
+- (void)loadView {
+	[super loadView];
+	[[self view] setBackgroundColor:[UIColor whiteColor]];
+
+	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:[[self view] bounds]];
+	[[self view] addSubview:$loadingView];
+	
+	$scrollView = [[UIScrollView alloc] initWithFrame:[[self view] bounds]];
+	[$scrollView setHidden:YES];
+	[[self view] addSubview:$scrollView];
+	
+	$contentView = [[NewsItemView alloc] initWithFrame:CGRectMake(0.f, 0.f, [[self view] bounds].size.width, 0.f)];
+	[$scrollView addSubview:$contentView];
+
+	$webView = [[UIWebView alloc] initWithFrame:[[self view] bounds]];
+	[$webView setHidden:YES];
+	[$webView setDelegate:self];
+	[[self view] addSubview:$webView];
+	
+	[[self view] addSubview:$scrollView];
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:@"Artigo"];
+
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		NSData *data = [NSData dataWithContentsOfURL:$url];
+
+		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+		NSLog(@"%@", document);
+
+		XMLElement *content = [document firstElementMatchingPath:@"/html/body/div[@id = 'main']/section/div[starts-with(@id, 'content')]/div[starts-with(@class, 'conteudo')]"];
+		if (content == nil) {
+			[document release];
+			
+			dispatch_sync(dispatch_get_main_queue(), ^{
+				[self failContentViewWithHTMLData:data];
+			});
+
+			return;
+		}
+		
+		XMLElement *sectionElement = [content firstElementMatchingPath:@"./div[@class='titulo']/h2"];
+
+		NSString *class = [[content attributes] objectForKey:@"class"];
+		XMLElement *articleElement = [class hasSuffix:@"-2"] ? [content firstElementMatchingPath:@"./article"] : content;
+		NSArray *paragraphs = [articleElement elementsMatchingPath:@"./p[not(contains(text(), 'javascript:')) and string-length(text())>0]"];
+
+		XMLElement *titleElement = [articleElement firstElementMatchingPath:@"./h4"];
+		XMLElement *subtitleElement = nil;
+		
+		BOOL hasImageElement = NO;
+		NSUInteger paragraphCount = 0;
+		for (XMLElement *element in paragraphs) {
+			if ([element firstElementMatchingPath:@"./img"]) { hasImageElement = YES; break; }
+			else if (subtitleElement == nil) subtitleElement = element;
+			paragraphCount++;
+		}
+		if (!hasImageElement || paragraphCount > 1) {
+			if (![subtitleElement firstElementMatchingPath:@"./em"]) //FIXME
+				subtitleElement = nil;
+		}
+		
+		NSString *section = sectionElement ? [sectionElement content] : nil;
+		NSString *title = titleElement ? [titleElement content] : nil;
+		NSString *subtitle = subtitleElement ? ParseNewsParagraph([subtitleElement content]) : nil;
+		NSMutableArray *contents = [NSMutableArray array];
+
+		NSUInteger startIndex = subtitle ? 1 : 0;
+		for (NSUInteger i = startIndex; i < [paragraphs count]; i++) {
+			XMLElement *imageElement = nil;
+			if ((imageElement = [[paragraphs objectAtIndex:i] firstElementMatchingPath:@"./img"]))
+				[contents addObject:[UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[kPortoRootURL stringByAppendingString:[[imageElement attributes] objectForKey:@"src"]]]]]];
+			else {
+				NSString *parsed = ParseNewsParagraph([[paragraphs objectAtIndex:i] content]);
+				if ([parsed length] > 4) // That is \n, \t, \u00a0 and another mysterious char. (\0?)
+					[contents addObject:parsed];
+			}
+		}
+
+		dispatch_sync(dispatch_get_main_queue(), ^{
+			[$contentView setSection:section];
+			[$contentView setTitle:title];
+			[$contentView setSubtitle:subtitle];
+			[$contentView setContents:contents];
+
+			[self enableContentView];
+		});
+
+		[document release];
+	});
+}
+
+- (void)failContentViewWithHTMLData:(NSData *)data {
+	[$webView loadData:data MIMEType:@"text/html" textEncodingName:@"utf-8" baseURL:$url];
+	
+	[self hideLoadingView];
+	[$webView setHidden:NO];
+}
+
+- (void)hideLoadingView {
+	[[$loadingView activityIndicatorView] stopAnimating];
+	[$loadingView setHidden:YES];
+}
+
+
+- (void)enableContentView {
+	[self hideLoadingView];
+	
+	[$contentView sizeToFit];
+	[$contentView setNeedsDisplay];
+	
+	[$scrollView setContentSize:CGSizeMake([$contentView bounds].size.width, [$contentView bounds].size.height + [$contentView heightOffset])];
+	NSLog(@"size %@ contentsize %@", NSStringFromCGRect([$contentView bounds]), NSStringFromCGSize([$scrollView contentSize]));
+	[$scrollView setHidden:NO];
+}
+
+- (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)type {
+	return NO;
+}
+
+- (void)dealloc {
+	[$url release];
+
+	[$loadingView release];
+	[$scrollView release];
+	[$contentView release];
+	[$webView release];
+	[super dealloc];
 }
 @end
 
@@ -1655,6 +2651,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			nil];
 		[$imageData addObject:more];
 		
+		[document release];
+
 		$isLoading = NO;
 		dispatch_sync(dispatch_get_main_queue(), ^{
 			[$tableView setScrollEnabled:YES];
@@ -1825,7 +2823,40 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @implementation GradesViewController
 - (void)loadView {
 	[super loadView];
-	[[self view] setBackgroundColor:[UIColor blueColor]];
+	[[self view] setBackgroundColor:[UIColor whiteColor]];
+
+	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:[[self view] bounds]];
+	[[self view] addSubview:$loadingView];
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:@"Notas"];
+
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+		SessionController *sessionController = [SessionController sharedInstance];
+		
+		NSURLResponse *response;
+		NSError *error;
+		
+		NSURL *url = [NSURL URLWithString:[@"http://www.educacional.com.br/" stringByAppendingString:[[sessionController sessionInfo] objectForKey:kPortoPortalKey]]];
+		NSData *data = [sessionController loadPageWithURL:url method:@"GET" response:&response error:&error];
+		//NSLog(@"data: %@", data);
+		
+		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+		//NSLog(@"docccc: %@", document);
+		XMLElement *root = [document firstElementMatchingPath:@"/html/body"];
+		//NSLog(@"root %@", root);
+		NSLog(@"content %@", [root content]);
+
+		[document release];
+	});
+}
+
+- (void)dealloc {
+	[$loadingView release];
+
+	[super dealloc];
 }
 @end
 
@@ -1875,9 +2906,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	NewsViewController *newsViewController = [[[NewsViewController alloc] init] autorelease];
 	UINavigationController *newsNavController = [[[UINavigationController alloc] initWithRootViewController:newsViewController] autorelease];
 	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:nil tag:0] autorelease]];
-
+	
 	GradesViewController *gradesViewController = [[[GradesViewController alloc] init] autorelease];
-	[gradesViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:nil tag:0] autorelease]];
+	UINavigationController *gradesNavController = [[[UINavigationController alloc] initWithRootViewController:gradesViewController] autorelease];
+	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:nil tag:0] autorelease]];
 
 	PapersViewController *papersViewController = [[[PapersViewController alloc] init] autorelease];
 	[papersViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Circulares" image:nil tag:0] autorelease]];
@@ -1890,14 +2922,18 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 	NSArray *controllers = [NSArray arrayWithObjects:
 		newsNavController,
-		gradesViewController,
+		gradesNavController,
 		papersViewController,
 		servicesViewController,
 		accountViewController,
 		nil];
 	$tabBarController = [[UITabBarController alloc] init];
 	[$tabBarController setViewControllers:controllers];
-    
+
+	[[UINavigationBar appearance] setTintColor:UIColorFromHexWithAlpha(0x1c2956, 1.f)];
+
+	[[SessionController sharedInstance] loadSessionWithHandler:^(BOOL unknown, NSError *error){}];
+
 	[$window setRootViewController:$tabBarController];
 	[$window makeKeyAndVisible];
 }
@@ -1917,6 +2953,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 int main(int argc, char **argv) {
 	debug(@"Entering main()");
 	
+	InitCache();
+
 	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 	int ret = UIApplicationMain(argc, argv, nil, @"AppDelegate");
     
@@ -1927,3 +2965,4 @@ int main(int argc, char **argv) {
 /* }}} */
 
 /* }}} */
+

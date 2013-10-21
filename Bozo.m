@@ -295,6 +295,7 @@ Keychain API expects as a validly constructed container class.
     {
         // No previous item found; add the new one.
         result = SecItemAdd((CFDictionaryRef)[self dictionaryToSecItemFormat:keychainItemData], NULL);
+	NSLog(@"result %d", result);
         NSAssert( result == noErr, @"Couldn't add the Keychain Item." );
     }
 }
@@ -1279,6 +1280,8 @@ static inline void Cache(NSString *key, id object) { [cache setObject:object for
 
 /* Macros {{{ */
 
+#define SYSTEM_VERSION_GT_EQ(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
+
 #define NUMBER_YES [NSNumber numberWithBool:YES]
 #define NUMBER_NO [NSNumber numberWithBool:NO]
 
@@ -1341,8 +1344,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @interface SessionController : NSObject {
 	KeychainItemWrapper *$keychainItem;
+	KeychainItemWrapper *$gradeKeyItem;
 
 	NSDictionary *$accountInfo;
+	NSString *$gradeID;
 	NSDictionary *$sessionInfo;
 }
 + (SessionController *)sharedInstance;
@@ -1351,8 +1356,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)setAccountInfo:(NSDictionary *)secInfo;
 - (BOOL)hasAccount;
 
+- (NSString *)gradeID;
+- (void)setGradeID:(NSString *)gradeID;
+
 - (NSDictionary *)sessionInfo;
 - (void)setSessionInfo:(NSDictionary *)sessionInfo;
+- (BOOL)hasSession;
 
 - (void)loadSessionWithHandler:(void(^)(BOOL, NSError *))handler;
 - (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error;
@@ -1376,9 +1385,48 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* }}} */
 
+/* Fail Views {{{ */
+
+@interface FailView : UIView {
+	UIView *centerView;
+	UIImageView *imageView;
+	UILabel *label;
+}
+@property(nonatomic, retain) NSString *text;
+@property(nonatomic, retain) UIImage *image;
+@end
+
+/* }}} */
+
 /* }}} */
 
 /* Controllers {{{ */
+
+/* Web Data Controller {{{ */
+
+@interface WebDataViewController : UIViewController {
+	dispatch_queue_t $queue;
+
+	LoadingIndicatorView *$loadingView;
+	FailView *$failureView;
+	UIView *$contentView;
+}
+
+- (WebDataViewController *)initWithIdentifier:(NSString *)identifier;
+
+- (UIView *)contentView;
+- (void)reloadData;
+
+- (void)$freeViews;
+- (void)freeData;
+
+- (void)displayLoadingView;
+- (void)hideLoadingView;
+- (void)displayFailViewWithImage:(UIImage *)img text:(NSString *)text;
+- (void)displayContentView;
+@end
+
+/* }}} */
 
 /* Login Controller {{{ */
 
@@ -1497,8 +1545,17 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Grades {{{ */
 
-@interface GradesViewController : UIViewController {
-	LoadingIndicatorView *$loadingView;
+@interface GradesListViewController : WebDataViewController {
+	
+}
+@end
+
+@interface GradesLegacyListViewController : WebDataViewController {
+	
+}
+@end
+
+@interface GradesViewController : WebDataViewController {
 	NSMutableArray *$views;
 }
 @end
@@ -1521,7 +1578,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Account {{{ */
 
-@interface AccountViewController : UIViewController
+@interface AccountViewController : UIViewController <LoginControllerDelegate>
+- (void)popupLoginController;
 @end
 
 /* }}} */
@@ -1543,6 +1601,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* Implementation {{{ */
 
 /* Views {{{ */
+
+/* Loading Indicator View {{{ */
+
 @implementation LoadingIndicatorView
 - (id)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame]) != nil) {
@@ -1610,6 +1671,57 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
     return spinner_;
 }
 @end
+
+/* }}} */
+
+/* Fail Views {{{ */
+
+@implementation FailView
+@synthesize text, image;
+
+- (id)initWithFrame:(CGRect)frame {
+	if ((self = [super initWithFrame:frame])) {
+
+		centerView = [[UIView alloc] initWithFrame:CGRectZero];
+		[centerView setBackgroundColor:[UIColor yellowColor]];
+		
+		imageView = [[UIImageView alloc] initWithFrame:CGRectZero];
+		[centerView addSubview:imageView];
+		[imageView release];
+		
+		label = [[UILabel alloc] initWithFrame:CGRectZero];
+		[centerView addSubview:label];
+		[label release];
+
+		[self addSubview:centerView];
+		[centerView release];
+	}
+
+	return self;
+}
+
+- (void)layoutSubviews {
+	[super layoutSubviews];
+    
+	CGSize textSize = [text sizeWithFont:[UIFont systemFontOfSize:13.f] constrainedToSize:CGSizeMake(centerView.bounds.size.width, CGFLOAT_MAX) lineBreakMode:UILineBreakModeWordWrap];
+
+    
+	// draw
+}
+
+- (void)dealloc {
+	[text release];
+	[image release];
+
+	[centerView release];
+	[imageView release];
+	[label release];
+
+	[super dealloc];
+}
+@end
+
+/* }}} */
 
 /* }}} */
 
@@ -1755,13 +1867,23 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (id)init {
 	if ((self = [super init])) {
 		$keychainItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoApp" accessGroup:@"am.theiostre.portoapp.keychain"];
+		$gradeKeyItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppX" accessGroup:@"am.theiostre.portoapp.keychain"];
+		NSLog(@"gki %@", $gradeKeyItem);
+
 		if (![[$keychainItem objectForKey:(id)kSecAttrAccount] isEqualToString:@""]) {
-			$accountInfo = [[NSDictionary alloc] initWithObjectsAndKeys:
+			$accountInfo = [[NSDictionary dictionaryWithObjectsAndKeys:
 				[$keychainItem objectForKey:(id)kSecAttrAccount], kPortoUsernameKey,
 				[$keychainItem objectForKey:(id)kSecValueData], kPortoPasswordKey,
-				nil];
+				nil] retain];
 		}
 		else $accountInfo = nil;
+
+		if (![[$gradeKeyItem objectForKey:(id)kSecAttrAccount] isEqualToString:@""]){
+			$gradeID = [[$gradeKeyItem objectForKey:(id)kSecValueData] retain];
+			NSLog(@"YAY GRADE ID IS COOL %@", $gradeID);
+		}
+		else $gradeID = nil;
+		NSLog(@"i hate you k");
 
 		$sessionInfo = nil;
 	}
@@ -1791,6 +1913,24 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return $accountInfo != nil;
 }
 
+- (NSString *)gradeID {
+	return $gradeID;
+}
+
+- (void)setGradeID:(NSString *)gradeID {
+	if ($gradeID != nil) [$gradeID release];
+	
+	if (gradeID == nil) [$gradeKeyItem resetKeychainItem];
+	else {
+		// FIXME: There must be a better keychain class or whatever for this purpose.
+		[$gradeKeyItem setObject:@"bacon" forKey:(id)kSecAttrAccount];
+		[$gradeKeyItem setObject:gradeID forKey:(id)kSecValueData];
+		NSLog(@"NEW GRADE KEY ITEM %@", [$gradeKeyItem objectForKey:(id)kSecValueData]);
+	}
+
+	$gradeID = [gradeID retain];
+}
+
 - (NSDictionary *)sessionInfo {
 	return $sessionInfo;
 }
@@ -1800,8 +1940,19 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	$sessionInfo = [sessionInfo retain];
 }
 
+- (BOOL)hasSession {
+	return $sessionInfo != nil;
+}
+
 - (void)loadSessionWithHandler:(void(^)(BOOL, NSError *))handler {
+	NSLog(@"$accountInfo = %@", $accountInfo);
+	if ($accountInfo == nil) {
+		handler(NO, [NSError errorWithDomain:kPortoErrorDomain code:10 userInfo:nil]);
+		return;
+	}
+	
 	SessionAuthenticator *authenticator = [[SessionAuthenticator alloc] initWithUsername:[$accountInfo objectForKey:kPortoUsernameKey] password:[$accountInfo objectForKey:kPortoPasswordKey]];
+	
 	[authenticator authenticateWithHandler:^(NSArray *cookies, NSString *portal, NSError *error){
 		NSLog(@"AUTHENTICATOR PORTAL %@", portal);
 
@@ -1853,7 +2004,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		@"/", NSHTTPCookiePath,
 		[[self sessionInfo] objectForKey:kPortoCookieNameKey], NSHTTPCookieName,
 		[[self sessionInfo] objectForKey:kPortoCookieKey], NSHTTPCookieValue,
-		nil]];
+		nil]]; //lol
 	NSHTTPCookie *serverCookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
 		@"www.educacional.com.br", NSHTTPCookieDomain,
 		@"/", NSHTTPCookiePath,
@@ -1874,6 +2025,14 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[urlRequest setAllHTTPHeaderFields:headers];
 	[urlRequest setHTTPMethod:method];
 	
+	if ([method isEqualToString:@"POST"]) {
+		NSString *urlString = [url absoluteString];
+		NSArray *parts = [urlString componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"?"]];
+		NSLog(@"parts are %@ %@", [parts objectAtIndex:0], [parts objectAtIndex:1]);
+		[urlRequest setURL:[NSURL URLWithString:[parts objectAtIndex:0]]];
+		[urlRequest setHTTPBody:[[parts objectAtIndex:1] dataUsingEncoding:NSUTF8StringEncoding]];
+	}
+	
 	return [NSURLConnection sendSynchronousRequest:urlRequest returningResponse:response error:error];
 }
 
@@ -1887,6 +2046,166 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @end
 
 /* }}} */
+
+/* }}} */
+
+/* Web Data Controller {{{ */
+
+@implementation WebDataViewController
+- (id)init {
+	NSLog(@"Calling -[WebDataViewController init], and using default identifier. THIS MAY CAUSE ERRORS.");
+	return [self initWithIdentifier:@"default"];
+}
+
+- (id)initWithIdentifier:(NSString *)identifier_ {
+	if ((self = [super init])) {
+		char *identifier;
+		asprintf(&identifier, "am.theiostre.portoapp.webdata.%s", [identifier_ UTF8String]);
+		
+		$queue = dispatch_queue_create(identifier, NULL);
+		dispatch_retain($queue);
+	}
+
+	return self;
+}
+
+- (void)loadView {
+	[super loadView];
+
+	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:[[self view] bounds]];
+	[[self view] addSubview:$loadingView];
+
+	$failureView = [[FailView alloc] initWithFrame:[[self view] bounds]];
+	[$failureView setHidden:YES];
+	[[self view] addSubview:$failureView];
+
+	$contentView = [[UIView alloc] initWithFrame:[[self view] bounds]];
+	[$contentView setHidden:YES];
+	[[self view] addSubview:$contentView];
+}
+
+- (void)didReceiveMemoryWarning {
+	[super didReceiveMemoryWarning];
+	if ([[self view] window] == nil) {
+		[self freeData];
+		
+		if (SYSTEM_VERSION_GT_EQ(@"6.0")) {
+			[self $freeViews];
+			[self setView:nil];
+		}
+	}
+}
+
+- (void)viewDidUnload {
+	[super viewDidUnload];
+	if (!SYSTEM_VERSION_GT_EQ(@"6.0")) [self $freeViews];
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+
+	// TODO: Add some convenient thing here which checks if we have a session and if we need that check.
+	
+	dispatch_async($queue, ^{
+		[self reloadData];
+	});
+}
+
+- (void)reloadData {
+	return;
+}
+
+- (UIView *)contentView {
+	return nil;
+}
+
+- (void)freeData {
+	return;
+}
+
+- (void)$performUIBlock:(void(^)())block {
+	if ([NSThread isMainThread]) block();
+	else dispatch_sync(dispatch_get_main_queue(), block);
+}
+
+- (void)displayLoadingView {
+	[self $performUIBlock:^{
+		[$failureView setHidden:YES];
+		[self hideContentView];
+
+		[[$loadingView activityIndicatorView] startAnimating];
+		[$loadingView setHidden:NO];
+	}];
+}
+
+- (void)hideLoadingView {
+	[self $performUIBlock:^{
+		[$loadingView setHidden:YES];
+		[[$loadingView activityIndicatorView] stopAnimating];
+	}];
+}
+
+- (void)hideContentView {
+	[self $performUIBlock:^{
+		[self unloadContentView];
+		[$contentView setHidden:YES];
+	}];
+}
+
+- (void)displayFailViewWithImage:(UIImage *)image text:(NSString *)text {
+	[self $performUIBlock:^{
+		[self hideLoadingView];
+		[self hideContentView];
+		
+		[$failureView setImage:image];
+		[$failureView setText:text];
+		[$failureView setNeedsLayout];
+		[$failureView setHidden:NO];
+	}];
+}
+
+- (void)displayContentView {
+	[self $performUIBlock:^{
+		[self hideLoadingView];
+		[$failureView setHidden:YES];
+		
+		[self loadContentView];
+		[$contentView addSubview:[self contentView]];
+		[$contentView setHidden:NO];
+	}];
+}
+
+- (void)displayErrorAlertViewWithTitle:(NSString *)title message:(NSString *)message {
+	[self $performUIBlock:^{
+		UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:title message:message delegate:nil cancelButtonTitle:@"Descartar" otherButtonTitles:nil];
+		[alertView show];
+		[alertView relese];
+	}];
+}
+
+- (void)loadContentView {
+	return;
+}
+
+- (void)unloadContentView {
+	return;
+}
+
+- (void)$freeViews {
+	[$loadingView release];
+	[$failureView release];
+	[$contentView release];
+}
+
+- (void)dealloc {
+	[self $freeViews];
+	[self freeData];
+	
+	dispatch_release($queue);
+
+	[super dealloc];
+}
+@end
 
 /* }}} */
 
@@ -2086,6 +2405,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return;
 }
 
+- (void)cancel {
+	[$delegate loginControllerDidCancel:self];
+}
+
 - (NSArray *)gradientColors {
 	return nil;
 }
@@ -2180,7 +2503,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)viewDidLoad {
 	[super viewDidLoad];
 
-	[$bottomLabel setText:@"Seus dados são apenas mandados ao Porto."];
+	[$bottomLabel setText:@"Seus dados serão mandados apenas ao Porto."];
 	[$bottomLabel setTextColor:[UIColor whiteColor]];
 }
 
@@ -2192,20 +2515,74 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)authenticate {
+	NSLog(@"AUTHENTICATE");
+	
 	NSString *user = [$usernameField text];
 	NSString *password = [$passwordField text];
 	
 	SessionController *controller = [SessionController sharedInstance];
-
+	
+	NSDictionary *previousAccountInfo = [controller accountInfo];
 	[controller setAccountInfo:[NSDictionary dictionaryWithObjectsAndKeys:
 		user, kPortoUsernameKey,
 		password, kPortoPasswordKey,
 		nil]];
 	
+	NSLog(@"GONNA LOAD SESSION WITH HANDLER.");
 	[controller loadSessionWithHandler:^(BOOL success, NSError *error){
-		if (!success) [controller setAccountInfo:nil];
+		if (!success) [controller setAccountInfo:previousAccountInfo];
+		else [self generateGradeID];
+
 		[self endRequestWithSuccess:success error:error];
 	}];
+}
+
+- (void)generateGradeID {
+	SessionController *controller = [SessionController sharedInstance];
+	NSURL *url = [NSURL URLWithString:[@"http://www.educacional.com.br/" stringByAppendingString:[[controller sessionInfo] objectForKey:kPortoPortalKey]]];
+
+	NSURLResponse *response;
+	NSError *error;
+	NSData *portalData = [controller loadPageWithURL:url method:@"GET" response:&response error:&error];
+	if (portalData == nil) {
+		[controller setGradeID:nil];
+		return;
+	}
+	
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:portalData];
+	XMLElement *boletimHref = [document firstElementMatchingPath:@"/html/body/div[@id='educ_geralexterno']/div[@id='educ_bgcorpo']/div[@id='educ_corpo']/div[@id='educ_conteudo']/div[@class='A']/div[@class='A_meio_bl']/div[@class='A_panel_bl  A_panel_hidden_bl ']/div[@class='botoes']/a[1]"];
+	NSString *function = [[boletimHref attributes] objectForKey:@"href"];
+	
+	if (function == nil) {
+		[document release];
+		[controller setGradeID:nil];
+		return;
+	}
+
+	NSRange parRange = [function rangeOfString:@"fPS_Boletim"];
+	NSString *parameter = [function substringFromIndex:parRange.location + parRange.length];
+	NSString *truyyut = [parameter substringWithRange:NSMakeRange(2, [parameter length]-5)];
+	[document release];
+	
+	url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.educacional.com.br/barra_logados/servicos/portoseguro_notasparciais.asp?x=%@", truyyut]];
+	NSData *data = [controller loadPageWithURL:url method:@"GET" response:&response error:&error];
+	if (data == nil) {
+		[controller setGradeID:nil];
+		return;
+	}
+
+	document = [[XMLDocument alloc] initWithHTMLData:data];
+	XMLElement *medElement = [document firstElementMatchingPath:@"/html/body/form/input"];
+	if (medElement == nil) {
+		[document release];
+		[controller setGradeID:nil];
+		return;
+	}
+
+	NSString *token = [[medElement attributes] objectForKey:@"value"];
+	[document release];
+
+	[controller setGradeID:token];
 }
 @end
 /* }}} */
@@ -2481,6 +2858,13 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 
 	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 		NSData *data = [NSData dataWithContentsOfURL:$url];
+		if (data == nil) {
+			dispatch_sync(dispatch_get_main_queue(), ^{
+				;
+			});
+			
+			return;
+		}
 
 		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 		NSLog(@"%@", document);
@@ -2821,42 +3205,90 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 /* Grades Controller {{{ */
 
 @implementation GradesViewController
-- (void)loadView {
-	[super loadView];
-	[[self view] setBackgroundColor:[UIColor whiteColor]];
+- (void)reloadData {
+	[super reloadData];
 
-	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:[[self view] bounds]];
-	[[self view] addSubview:$loadingView];
+	SessionController *sessionController = [SessionController sharedInstance];
+	if (![sessionController hasSession]) [self displayFailViewWithImage:nil text:@"Sem autenticação.\nRealize um login no menu de Contas."];
+	if (![sessionController gradeID]) {
+		[self displayFailViewWithImage:nil text:@"Falha ao obter o ID de Notas.\n\nEstamos trabalhando para consertar este problema."];
+		return;
+	}
+	
+	// load available years
+	// only 2012 and 2011 is available in the arquivo.
+	/*
+	if (pick >= 2013) { GC *x = [[GC alloc] initWithViewState:y eventValidation:z year:a period:b]; }
+	else { Legacy *x = [[Legacy alloc] init]; // webview }
+	*/
+
+	NSString *viewState = nil;
+	NSString *eventValidation = nil;
+
+	NSURL *dummyURL = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?token=%@", [sessionController gradeID]]];
+	NSURLResponse *dummyResponse;
+	NSData *dummyData = [sessionController loadPageWithURL:dummyURL method:@"POST" response:&dummyResponse error:NULL];
+	if (dummyData == nil) {
+		[self displayFailViewWithImage:nil text:@"Falha ao carregar página.\n\nCheque sua conexão de Internet."];
+		return;
+	}
+	
+	XMLDocument *dummyDocument = [[XMLDocument alloc] initWithHTMLData:dummyData];
+	//NSLog(@"BODY: %@", [[dummyDocument firstElementMatchingPath:@"/html/body/form[@id='form1']"] content]);
+	NSArray *hiddenInputs = [dummyDocument elementsMatchingPath:@"/html/body/form[@id='form1']/input[@type='hidden']"];
+	NSLog(@"hidden! %@", hiddenInputs);
+	for (XMLElement *input in hiddenInputs) {
+		NSDictionary *attributes = [input attributes];
+		if ([[attributes objectForKey:@"name"] isEqualToString:@"__VIEWSTATE"])
+			viewState = [attributes objectForKey:@"value"];
+		else if ([[attributes objectForKey:@"name"] isEqualToString:@"__EVENTVALIDATION"])
+			eventValidation = [attributes objectForKey:@"value"];
+	}
+	[dummyDocument release];
+	
+	NSLog(@"VIEW STATE %@ EVENT VALIDATION %@", viewState, eventValidation);
+
+	if (viewState == nil || eventValidation == nil) {
+		[self displayFailViewWithImage:nil text:@"Falha ao interpretar página (notasparciais.aspx:dummy)\n\nEstamos trabalhando para consertar este problema."];
+		return;
+	}
+	
+	// selection parsing!
+	// setup content view and pass options etc.
+
+	NSString *request = [[NSDictionary dictionaryWithObjectsAndKeys:
+		[sessionController gradeID], @"token",
+		@"2013", @"ctl00$ContentPlaceHolder1$ddlAno",
+		@"1", @"ctl00$ContentPlaceHolder1$ddlEtapa",
+		@"Visualizar", @"ctl00$ContentPlaceHolder1$btnVoltarLista",
+		viewState, @"__VIEWSTATE",
+		eventValidation, @"__EVENTVALIDATION",
+		nil] urlEncodedString];
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?%@", request]];
+	
+	NSURLResponse *response;
+	NSError *error;
+	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:&error];
+
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+	XMLElement *element = [document firstElementMatchingPath:@"/html/body"];
+	NSLog(@"%@", [element content]);
+
+	[document release];
+}
+
+- (UIView *)contentView {
+	return nil;
+}
+
+- (void)freeData {
+	//[$gradeDump release];
+	[super freeData];
 }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	[self setTitle:@"Notas"];
-
-	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-		SessionController *sessionController = [SessionController sharedInstance];
-		
-		NSURLResponse *response;
-		NSError *error;
-		
-		NSURL *url = [NSURL URLWithString:[@"http://www.educacional.com.br/" stringByAppendingString:[[sessionController sessionInfo] objectForKey:kPortoPortalKey]]];
-		NSData *data = [sessionController loadPageWithURL:url method:@"GET" response:&response error:&error];
-		//NSLog(@"data: %@", data);
-		
-		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-		//NSLog(@"docccc: %@", document);
-		XMLElement *root = [document firstElementMatchingPath:@"/html/body"];
-		//NSLog(@"root %@", root);
-		NSLog(@"content %@", [root content]);
-
-		[document release];
-	});
-}
-
-- (void)dealloc {
-	[$loadingView release];
-
-	[super dealloc];
 }
 @end
 
@@ -2891,9 +3323,30 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	[super loadView];
 	[[self view] setBackgroundColor:[UIColor blueColor]];
 }
+
+- (void)popupLoginController {
+	PortoLoginController *loginController = [[PortoLoginController alloc] init];
+	[loginController setDelegate:self];
+	UINavigationController *navLoginController = [[[UINavigationController alloc] initWithRootViewController:loginController] autorelease];
+	[self presentViewController:navLoginController animated:YES completion:NULL];
+	[loginController release];
+}
+
+- (void)loginControllerDidLogin:(LoginController *)controller {
+	NSLog(@"DID LOGIN.");
+	[self dismissViewControllerAnimated:YES completion:NULL];
+}
+
+- (void)loginControllerDidCancel:(LoginController *)controller {
+	[self dismissViewControllerAnimated:YES completion:NULL];
+}
 @end
 
 /* }}} */
+
+static void DebugInit() {
+	//[[SessionController sharedInstance] setAccountInfo:nil];
+}
 
 /* App Delegate {{{ */
 
@@ -2901,13 +3354,15 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 @synthesize window = $window;
 
 - (void)applicationDidFinishLaunching:(UIApplication *)application {
+	DebugInit();
+	
 	$window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
 	
 	NewsViewController *newsViewController = [[[NewsViewController alloc] init] autorelease];
 	UINavigationController *newsNavController = [[[UINavigationController alloc] initWithRootViewController:newsViewController] autorelease];
 	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:nil tag:0] autorelease]];
 	
-	GradesViewController *gradesViewController = [[[GradesViewController alloc] init] autorelease];
+	GradesViewController *gradesViewController = [[[GradesViewController alloc] initWithIdentifier:@"grades"] autorelease];
 	UINavigationController *gradesNavController = [[[UINavigationController alloc] initWithRootViewController:gradesViewController] autorelease];
 	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:nil tag:0] autorelease]];
 
@@ -2918,24 +3373,57 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	[servicesViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Serviços" image:nil tag:0] autorelease]];
 
 	AccountViewController *accountViewController = [[[AccountViewController alloc] init] autorelease];
-	[accountViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Conta" image:nil tag:0] autorelease]];
+	UINavigationController *accountNavViewController = [[[UINavigationController alloc] initWithRootViewController:accountViewController] autorelease];
+	[accountNavViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Conta" image:nil tag:0] autorelease]];
 
 	NSArray *controllers = [NSArray arrayWithObjects:
 		newsNavController,
 		gradesNavController,
 		papersViewController,
 		servicesViewController,
-		accountViewController,
+		accountNavViewController,
 		nil];
 	$tabBarController = [[UITabBarController alloc] init];
 	[$tabBarController setViewControllers:controllers];
 
 	[[UINavigationBar appearance] setTintColor:UIColorFromHexWithAlpha(0x1c2956, 1.f)];
 
-	[[SessionController sharedInstance] loadSessionWithHandler:^(BOOL unknown, NSError *error){}];
-
 	[$window setRootViewController:$tabBarController];
 	[$window makeKeyAndVisible];
+	
+	[[SessionController sharedInstance] loadSessionWithHandler:^(BOOL success, NSError *error){
+		if (success) return;
+
+		if ([[error domain] isEqualToString:kPortoErrorDomain]) {
+			if ([error code] == 10) {
+				NSLog(@"HI");
+				[$tabBarController setSelectedIndex:4];
+				[accountViewController popupLoginController];
+				NSLog(@"BYE");
+			}
+
+			else {
+				UIAlertView *errorAlert = [[UIAlertView alloc] init];
+				[errorAlert setTitle:@"Erro"];
+				[errorAlert setMessage:[NSString stringWithFormat:@"Erro de conexão (%d).", [error code]]];
+				[errorAlert addButtonWithTitle:@"OK"];
+				[errorAlert setCancelButtonIndex:0];
+				[errorAlert show];
+				[errorAlert release];
+			}
+		}
+		else {
+			UIAlertView *errorAlert = [[UIAlertView alloc] init];
+			[errorAlert setTitle:@"Erro"];
+			[errorAlert setMessage:[NSString stringWithFormat:@"Erro desconhecido (%@: %d).", [error domain], [error code]]];
+			[errorAlert addButtonWithTitle:@"OK"];
+			[errorAlert setCancelButtonIndex:0];
+			[errorAlert show];
+			[errorAlert release];
+		}
+	}];
+
+	NSLog(@"End App Delegate init.");
 }
 
 - (void)dealloc {

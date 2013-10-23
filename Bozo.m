@@ -295,7 +295,6 @@ Keychain API expects as a validly constructed container class.
     {
         // No previous item found; add the new one.
         result = SecItemAdd((CFDictionaryRef)[self dictionaryToSecItemFormat:keychainItemData], NULL);
-	NSLog(@"result %d", result);
         NSAssert( result == noErr, @"Couldn't add the Keychain Item." );
     }
 }
@@ -1270,6 +1269,40 @@ static inline void Cache(NSString *key, id object) { [cache setObject:object for
 
 /* }}} */
 
+/* Pair {{{ */
+
+@interface Pair : NSObject {
+@public
+	id obj1;
+	id obj2;
+}
+- (id)initWithObjects:(id)object, ...;
+@end
+
+@implementation Pair
+- (id)initWithObjects:(id)object, ... {
+	if ((self = [super init])) {
+		va_list args;
+		va_start(args, object);
+		
+		obj1 = [object retain];
+		obj2 = [va_arg(args, id) retain];
+		va_end(args);
+	}
+
+	return self;
+}
+
+- (void)dealloc {
+	[obj1 release];
+	[obj2 release];
+
+	[super dealloc];
+}
+@end
+
+/* }}} */
+
 /* }}} */
 
 /* Constants {{{ */
@@ -1415,6 +1448,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (WebDataViewController *)initWithIdentifier:(NSString *)identifier;
 
 - (UIView *)contentView;
+- (void)loadContentView;
+- (void)unloadContentView;
+
+- (void)refresh;
 - (void)reloadData;
 
 - (void)$freeViews;
@@ -1424,6 +1461,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)hideLoadingView;
 - (void)displayFailViewWithImage:(UIImage *)img text:(NSString *)text;
 - (void)displayContentView;
+
+- (void)$performUIBlock:(void(^)())block;
 @end
 
 /* }}} */
@@ -1546,17 +1585,32 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* Grades {{{ */
 
 @interface GradesListViewController : WebDataViewController {
+	NSString *$year;
+	NSString *$period;
+	NSString *$viewState;
+	NSString *$eventValidation;
+
+	
+}
+
+- (GradesListViewController *)initWithYear:(NSString *)year period:(NSString *)period viewState:(NSString *)viewState eventValidation:(NSString *)eventValidation;
+@property (nonatomic, retain) NSString *year;
+@property (nonatomic, retain) NSString *period;
+
+
+@end
+
+@interface GradesLegacyListViewController : UIViewController {
 	
 }
 @end
 
-@interface GradesLegacyListViewController : WebDataViewController {
-	
-}
-@end
+@interface GradesViewController : WebDataViewController <UITableViewDelegate, UITableViewDataSource> {
+	NSMutableDictionary *$periodOptions;
+	NSMutableArray *$yearOptions;
 
-@interface GradesViewController : WebDataViewController {
-	NSMutableArray *$views;
+	NSString *$viewState;
+	NSString *$eventValidation;
 }
 @end
 
@@ -2051,6 +2105,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Web Data Controller {{{ */
 
+// The whole -loadContentView API is not need-based. Rather, it is called on the controller's -loadView,
+// and -unload is called on memory issues.
+// That is, this is just a custom way to initialize and manipulate our main view, not really an
+// awesome system to handle content views on-demand.
+// Thought, might it be a good idea to implement this? We'd be splitting a view's management from
+// our view controller's, but is that a bad thing if it spares us memory?
+
 @implementation WebDataViewController
 - (id)init {
 	NSLog(@"Calling -[WebDataViewController init], and using default identifier. THIS MAY CAUSE ERRORS.");
@@ -2076,10 +2137,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[[self view] addSubview:$loadingView];
 
 	$failureView = [[FailView alloc] initWithFrame:[[self view] bounds]];
+	[$failureView setBackgroundColor:[UIColor whiteColor]];
 	[$failureView setHidden:YES];
 	[[self view] addSubview:$failureView];
-
-	$contentView = [[UIView alloc] initWithFrame:[[self view] bounds]];
+	
+	$contentView = nil;
+	[self loadContentView];
 	[$contentView setHidden:YES];
 	[[self view] addSubview:$contentView];
 }
@@ -2103,20 +2166,27 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	[self refresh];
 
-	// TODO: Add some convenient thing here which checks if we have a session and if we need that check.
-	
-	dispatch_async($queue, ^{
-		[self reloadData];
-	});
+	// TODO: Add a session id check here (would be convenient)
+}
+
+- (void)refresh {
+	[self $performUIBlock:^{ [self displayLoadingView]; }];
+	if ([NSThread isMainThread]) dispatch_async($queue, ^{ [self reloadData]; });
+	else [self reloadData];
 }
 
 - (void)reloadData {
 	return;
 }
 
+- (Class)contentViewClass {
+	return [UIView class];
+}
+
 - (UIView *)contentView {
-	return nil;
+	return $contentView;
 }
 
 - (void)freeData {
@@ -2147,7 +2217,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)hideContentView {
 	[self $performUIBlock:^{
-		[self unloadContentView];
 		[$contentView setHidden:YES];
 	}];
 }
@@ -2168,9 +2237,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[self $performUIBlock:^{
 		[self hideLoadingView];
 		[$failureView setHidden:YES];
-		
-		[self loadContentView];
-		[$contentView addSubview:[self contentView]];
 		[$contentView setHidden:NO];
 	}];
 }
@@ -2179,12 +2245,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[self $performUIBlock:^{
 		UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:title message:message delegate:nil cancelButtonTitle:@"Descartar" otherButtonTitles:nil];
 		[alertView show];
-		[alertView relese];
+		[alertView release];
 	}];
 }
 
 - (void)loadContentView {
-	return;
+	$contentView = [[UIView alloc] initWithFrame:[[self view] bounds]];
 }
 
 - (void)unloadContentView {
@@ -2194,6 +2260,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)$freeViews {
 	[$loadingView release];
 	[$failureView release];
+	
+	[self unloadContentView];
 	[$contentView release];
 }
 
@@ -3204,7 +3272,91 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 
 /* Grades Controller {{{ */
 
+@implementation GradesListViewController
+@synthesize year = $year, period = $period;
+
+- (id)init {
+	return nil;
+}
+
+- (GradesListViewController *)initWithYear:(NSString *)year period:(NSString *)period viewState:(NSString *)viewState eventValidation:(NSString *)eventValidation {
+	if ((self = [super init])) {
+		$viewState = [viewState retain];
+		$eventValidation = [eventValidation retain];
+
+		[self setYear:year];
+		[self setPeriod:period];
+	}
+
+	return self;
+}
+
+- (void)reloadData {
+	[super reloadData];
+	SessionController *sessionController = [SessionController sharedInstance];
+	
+	NSString *request = [[NSDictionary dictionaryWithObjectsAndKeys:
+		[sessionController gradeID], @"token",
+		$year, @"ctl00$ContentPlaceHolder1$ddlAno",
+		$period, @"ctl00$ContentPlaceHolder1$ddlEtapa",
+		@"Visualizar", @"ctl00$ContentPlaceHolder1$btnVoltarLista",
+		$viewState, @"__VIEWSTATE",
+		$eventValidation, @"__EVENTVALIDATION",
+		nil] urlEncodedString];
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?%@", request]];
+	
+	NSURLResponse *response;
+	NSError *error;
+	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:&error];
+
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+	XMLElement *divGeral = [document firstElementMatchingPath:@"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']"];
+	NSLog(@"divGeral: %@", divGeral);
+	
+	NSString *information = [[divGeral firstElementMatchingPath:@"./div[@id='ContentPlaceHolder1_divTurma']/h3"] content];
+	NSLog(@"information: %@", information);
+
+	XMLElement *table = [divGeral firstElementMatchingPath:@"./table[@id='ContentPlaceHolder1_dlMaterias']"];
+	NSLog(@"table: %@", table);
+	NSArray *subjectElements = [table elementsMatchingPath:@"./tr/td/div[@class='container']"];
+	NSLog(@"subjectElements: %@", subjectElements);
+	
+	for (XMLElement *container in subjectElements) {
+		NSString *subjectName = [[container firstElementMatchingPath:@"./h2[@class='fleft m10r ']/span"] content];
+		
+	}
+
+	[document release];
+}
+
+- (void)dealloc {
+	[$viewState release];
+	[$eventValidation release];
+	[$year release];
+	[$period release];
+
+	[super dealloc];
+}
+@end
+
 @implementation GradesViewController
+- (id)initWithIdentifier:(NSString *)identifier {
+	if ((self = [super initWithIdentifier:identifier])) {
+		$yearOptions = [[NSMutableArray alloc] init];
+		$periodOptions = [[NSMutableDictionary alloc] init];
+
+		$viewState = nil;
+		$eventValidation = nil;
+	}
+
+	return self;
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:@"Notas"];
+}
+
 - (void)reloadData {
 	[super reloadData];
 
@@ -3215,70 +3367,123 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 		return;
 	}
 	
-	// load available years
-	// only 2012 and 2011 is available in the arquivo.
-	/*
-	if (pick >= 2013) { GC *x = [[GC alloc] initWithViewState:y eventValidation:z year:a period:b]; }
-	else { Legacy *x = [[Legacy alloc] init]; // webview }
-	*/
+	if ($viewState != nil) [$viewState release];
+	if ($eventValidation != nil) [$eventValidation release];
+	$viewState = nil;
+	$eventValidation = nil;
 
-	NSString *viewState = nil;
-	NSString *eventValidation = nil;
-
-	NSURL *dummyURL = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?token=%@", [sessionController gradeID]]];
-	NSURLResponse *dummyResponse;
-	NSData *dummyData = [sessionController loadPageWithURL:dummyURL method:@"POST" response:&dummyResponse error:NULL];
-	if (dummyData == nil) {
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?token=%@", [sessionController gradeID]]];
+	NSURLResponse *response;
+	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+	if (data == nil) {
 		[self displayFailViewWithImage:nil text:@"Falha ao carregar página.\n\nCheque sua conexão de Internet."];
 		return;
 	}
 	
-	XMLDocument *dummyDocument = [[XMLDocument alloc] initWithHTMLData:dummyData];
-	//NSLog(@"BODY: %@", [[dummyDocument firstElementMatchingPath:@"/html/body/form[@id='form1']"] content]);
-	NSArray *hiddenInputs = [dummyDocument elementsMatchingPath:@"/html/body/form[@id='form1']/input[@type='hidden']"];
-	NSLog(@"hidden! %@", hiddenInputs);
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+	NSArray *hiddenInputs = [document elementsMatchingPath:@"/html/body/form[@id='form1']/input[@type='hidden']"];
 	for (XMLElement *input in hiddenInputs) {
 		NSDictionary *attributes = [input attributes];
 		if ([[attributes objectForKey:@"name"] isEqualToString:@"__VIEWSTATE"])
-			viewState = [attributes objectForKey:@"value"];
+			$viewState = [[attributes objectForKey:@"value"] retain];
 		else if ([[attributes objectForKey:@"name"] isEqualToString:@"__EVENTVALIDATION"])
-			eventValidation = [attributes objectForKey:@"value"];
+			$eventValidation = [[attributes objectForKey:@"value"] retain];
 	}
-	[dummyDocument release];
-	
-	NSLog(@"VIEW STATE %@ EVENT VALIDATION %@", viewState, eventValidation);
 
-	if (viewState == nil || eventValidation == nil) {
-		[self displayFailViewWithImage:nil text:@"Falha ao interpretar página (notasparciais.aspx:dummy)\n\nEstamos trabalhando para consertar este problema."];
+	if ($viewState == nil || $eventValidation == nil) {
+		[self displayFailViewWithImage:nil text:@"Falha ao interpretar página (notasparciais.aspx:State/Validation)\n\nEstamos trabalhando para consertar este problema."];
 		return;
 	}
 	
-	// selection parsing!
-	// setup content view and pass options etc.
-
-	NSString *request = [[NSDictionary dictionaryWithObjectsAndKeys:
-		[sessionController gradeID], @"token",
-		@"2013", @"ctl00$ContentPlaceHolder1$ddlAno",
-		@"1", @"ctl00$ContentPlaceHolder1$ddlEtapa",
-		@"Visualizar", @"ctl00$ContentPlaceHolder1$btnVoltarLista",
-		viewState, @"__VIEWSTATE",
-		eventValidation, @"__EVENTVALIDATION",
-		nil] urlEncodedString];
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?%@", request]];
+	NSString *m3tPath = @"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']/div[@class='container']/div[@class='m3t']";
+	XMLElement *yearSelect = [document firstElementMatchingPath:[m3tPath stringByAppendingString:@"/select[@name='ctl00$ContentPlaceHolder1$ddlAno']"]];
+	XMLElement *periodSelect = [document firstElementMatchingPath:[m3tPath stringByAppendingString:@"/select[@name='ctl00$ContentPlaceHolder1$ddlEtapa']"]];
 	
-	NSURLResponse *response;
-	NSError *error;
-	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:&error];
+	/*NSArray *yearOptionElements = [yearSelect elementsMatchingPath:@"./option"];
+	for (XMLElement *element in yearOptionElements) {
+		Pair *p = [[[Pair alloc] initWithObjects:[element content], [[element attributes] objectForKey:@"value"]] autorelease];
+		[$yearOptions addObject:p];
+	}*/
+	// Unfortunately, it's impossible to attempt any debugging with the server at its current state.
+	// Maybe next year.
+	Pair *pa = [[[Pair alloc] initWithObjects:@"2013", @"2013"] autorelease];
+	[$yearOptions addObject:pa];
+	
+	if ([$yearOptions count] == 0) {
+		[self displayFailViewWithImage:nil text:@"Falha ao interpretar página (notasparciais.aspx:Select)\n\nEstamos trabalhando para consertar este problema."];
+		return;
+	}
 
-	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-	XMLElement *element = [document firstElementMatchingPath:@"/html/body"];
-	NSLog(@"%@", [element content]);
-
+	for (Pair *year in $yearOptions) {
+		NSArray *periodOptionElements = [periodSelect elementsMatchingPath:@"./option"];
+		NSMutableArray *periods = [NSMutableArray array];
+		for (XMLElement *element in periodOptionElements) {
+			Pair *p = [[[Pair alloc] initWithObjects:[[element content] stringByAppendingString:@" Período"], [[element attributes] objectForKey:@"value"]] autorelease];
+			[periods addObject:p];
+		}
+		[$periodOptions setObject:periods forKey:year->obj2];
+	}
+	
 	[document release];
+
+	
+	NSLog(@"%@ %@", $yearOptions, $periodOptions);
+	
+	[self $performUIBlock:^{
+		UITableView *tableView = (UITableView *)[self contentView];
+		[tableView reloadData];
+
+		[self displayContentView];
+	}];
 }
 
-- (UIView *)contentView {
-	return nil;
+- (void)loadContentView {
+	UITableView *tableView = [[UITableView alloc] initWithFrame:[[self view] bounds] style:UITableViewStylePlain];
+	[tableView setDelegate:self];
+	[tableView setDataSource:self];
+
+	$contentView = tableView;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return [$yearOptions count];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	Pair *yearValue_ = [$yearOptions objectAtIndex:section];
+	NSString *yearValue = yearValue_->obj2;
+	return [[$periodOptions objectForKey:yearValue] count];
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PortoAppGradeViewControllerCell"];
+	if (cell == nil) {
+		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppGradeViewControllerCell"] autorelease];
+	}
+	
+	Pair *yearValue_ = [$yearOptions objectAtIndex:[indexPath section]];
+	NSString *yearValue = yearValue_->obj2;
+	Pair *pair = [[$periodOptions objectForKey:yearValue] objectAtIndex:[indexPath row]];
+	[[cell textLabel] setText:(NSString *)pair->obj1];
+
+	return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	Pair *yearValue_ = [$yearOptions objectAtIndex:[indexPath section]];
+	NSString *yearValue = yearValue_->obj2;
+	Pair *periodValue_ = [[$periodOptions objectForKey:yearValue] objectAtIndex:[indexPath row]];
+	NSString *periodValue = periodValue_->obj2;
+
+	GradesListViewController *listController = [[[GradesListViewController alloc] initWithYear:yearValue period:periodValue viewState:$viewState eventValidation:$eventValidation] autorelease];
+	[[self navigationController] pushViewController:listController animated:YES];
+
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	Pair *year = [$yearOptions objectAtIndex:section];
+	return year->obj1;
 }
 
 - (void)freeData {
@@ -3286,9 +3491,13 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	[super freeData];
 }
 
-- (void)viewDidLoad {
-	[super viewDidLoad];
-	[self setTitle:@"Notas"];
+- (void)dealloc {
+	[$yearOptions release];
+	[$periodOptions release];
+	[$viewState release];
+	[$eventValidation release];
+
+	[super dealloc];
 }
 @end
 

@@ -124,6 +124,7 @@
 				EDB407FD17E25F7500521640 /* Sources */,
 				EDB407FE17E25F7500521640 /* Frameworks */,
 				EDB407FF17E25F7500521640 /* Resources */,
+				ED1B447817FB95AD0091D636 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -175,6 +176,22 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		ED1B447817FB95AD0091D636 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 12;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    /usr/bin/ldid -S ${APP}/PortoApp\n\n    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.148:/Applications/\n    sleep 5\n    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.148 \"killall -9 backboardd\"\nfi";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		EDB407FD17E25F7500521640 /* Sources */ = {
@@ -256,6 +273,8 @@
 		EDB4081F17E25F7500521640 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
 				HEADER_SEARCH_PATHS = "~/theos/include";
@@ -268,6 +287,8 @@
 		EDB4082017E25F7500521640 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
 				HEADER_SEARCH_PATHS = "~/theos/include";

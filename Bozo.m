@@ -2,6 +2,8 @@
  iOS interface to the Colégio Visconde de Porto Seguro grade/news etc.
  
  Created by Daniel Ferreira in 9/09/2013
+ (c) 2013 Bacon Coding Company, LLC
+ no rights whatsoever to the Fundação Visconde de Porto Seguro
  
  Licensed under the GNU General Public License version 3.
  */
@@ -1356,6 +1358,16 @@ static inline void Cache(NSString *key, id object) { [cache setObject:object for
 }
 @end
 
+@interface NSString (AmericanFloat)
+- (NSString *)americanFloat;
+@end
+
+@implementation NSString (AmericanFloat)
+- (NSString *)americanFloat {
+	return [self stringByReplacingOccurrencesOfString:@"," withString:@"."];
+}
+@end
+
 /* }}} */
 
 /* Classes {{{ */
@@ -1583,6 +1595,27 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* }}} */
 
 /* Grades {{{ */
+
+#define kPortoAverage 60
+
+@interface GradeContainer : NSObject
+@property(nonatomic, retain) NSString *name;
+@property(nonatomic, retain) NSString *grade;
+@property(nonatomic, retain) NSString *value;
+@property(nonatomic, retain) NSString *average;
+@property(nonatomic, retain) NSArray *subGradeContainers;
+@property(nonatomic, assign) NSInteger weight;
+- (NSInteger)totalWeight;
+- (BOOL)isAboveAverage;
+
+- (void)makeValueTen;
+
+- (NSString *)gradePercentage;
+- (void)calculateGradeFromSubgrades;
+- (void)calculateAverageFromSubgrades;
+
+@property(nonatomic, assign) NSInteger debugLevel;
+@end
 
 @interface GradesListViewController : WebDataViewController {
 	NSString *$year;
@@ -3272,6 +3305,78 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 
 /* Grades Controller {{{ */
 
+// Yay averages.
+// This is a node.
+// Container sounds better than GradeNode.
+@implementation GradeContainer
+@synthesize name, grade, value, average, subGradeContainers, weight, debugLevel;
+
+- (NSInteger)totalWeight {
+	NSInteger ret = 0;
+	for (GradeContainer *container in [self subGradeContainers])
+		ret += [container weight];
+
+	return ret;
+}
+
+- (CGFloat)$gradePercentage {
+	return [grade floatValue]/[value floatValue]*100;
+}
+
+- (BOOL)isAboveAverage {
+	return [self $gradePercentage] >= kPortoAverage;
+}
+
+- (NSString *)gradePercentage {
+	return [NSString stringWithFormat:@"%.2f%%", [self $gradePercentage]];
+}
+
+- (void)calculateGradeFromSubgrades {
+	NSInteger gradeSum = 0;
+	for (GradeContainer *container in [self subGradeContainers])
+		gradeSum += [[container grade] floatValue] * [container weight];
+	
+	[self setGrade:[NSString stringWithFormat:@"%.2f", (double)gradeSum / [self totalWeight]]];
+}
+
+- (void)makeValueTen {
+	[self setValue:[@"10,0" americanFloat]];
+}
+
+- (void)calculateAverageFromSubgrades {
+	NSInteger averageSum = 0;
+	for (GradeContainer *container in [self subGradeContainers])
+		averageSum += [[container average] floatValue] * [container weight];
+	
+	[self setAverage:[NSString stringWithFormat:@"%.2f", (double)averageSum / [self totalWeight]]];
+}
+
+- (void)dealloc {
+	[name release];
+	[grade release];
+	[value release];
+	[average release];
+	[subGradeContainers release];
+
+	[super dealloc];
+}
+
+- (NSString *)description {
+	NSMutableString *tabString = [[[NSMutableString alloc] initWithString:@""] autorelease];
+	for (int i=0; i<[self debugLevel]; i++) [tabString appendString:@"\t"];
+
+	NSString *selfstr = [NSString stringWithFormat:@"%@<GradeContainer: %p> (%@): %@/%@(%d) + %@", tabString, self, [self name], [self grade], [self value], [self weight], [self average]];
+	NSMutableString *mutableString = [[[NSMutableString alloc] initWithString:[selfstr stringByAppendingString:@"\n"]] autorelease];
+	
+	for (GradeContainer *container in [self subGradeContainers]) {
+		NSString *containerstr = [container description];
+		[mutableString appendString:containerstr];
+	}
+
+	return mutableString;
+}
+@end
+
 @implementation GradesListViewController
 @synthesize year = $year, period = $period;
 
@@ -3321,12 +3426,88 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	NSArray *subjectElements = [table elementsMatchingPath:@"./tr/td/div[@class='container']"];
 	NSLog(@"subjectElements: %@", subjectElements);
 	
+	GradeContainer *rootContainer = [[GradeContainer alloc] init];
+	[rootContainer setDebugLevel:0];
+	[rootContainer setWeight:1];
+	[rootContainer setName:@"Nota Total"];
+	[rootContainer makeValueTen];
+	
+	NSMutableArray *subjectContainers = [NSMutableArray array];
 	for (XMLElement *container in subjectElements) {
-		NSString *subjectName = [[container firstElementMatchingPath:@"./h2[@class='fleft m10r ']/span"] content];
+		GradeContainer *subjectContainer = [[[GradeContainer alloc] init] autorelease];
+		[subjectContainer setDebugLevel:1];
+		[subjectContainer makeValueTen];
+		[subjectContainer setWeight:1];
 		
+		NSString *subjectName = [[container firstElementMatchingPath:@"./h2[@class='fleft m10r ']/span"] content];
+		// B-Zug Fächer handeln
+		// denn ich kann
+		if ([subjectName hasPrefix:@"*"]) {
+			subjectName = [subjectName substringFromIndex:1];
+			subjectName = [subjectName stringByAppendingString:@" (\ue50e)"]; // \ue50e is meant to be a DE flag.
+		}
+		[subjectContainer setName:subjectName];
+
+		NSString *totalGrade = [[[[container firstElementMatchingPath:@"./h2[@class='fright ']/span/span[1]/span"] content] componentsSeparatedByString:@":"] objectAtIndex:1];
+		[subjectContainer setGrade:[totalGrade americanFloat]];
+		NSString *averageGrade = [[[[container firstElementMatchingPath:@"./h2[@class='fright ']/span/span[2]/span"] content] componentsSeparatedByString:@": "] objectAtIndex:1];
+		[subjectContainer setAverage:[averageGrade americanFloat]];
+		
+		// TODO: Optimize this into a recursive routine.
+		NSArray *subjectGrades = [[container firstElementMatchingPath:@"./div/table[starts-with(@id, 'ContentPlaceHolder1_dlMaterias_gvNotas')]"] elementsMatchingPath:@"./tr[@class!='headerTable1 p3']"];
+		NSMutableArray *subGradeContainers = [NSMutableArray array];
+		for (XMLElement *subsection in subjectGrades) {
+			GradeContainer *subGradeContainer = [[[GradeContainer alloc] init] autorelease];
+			[subGradeContainer setDebugLevel:2];
+			[subGradeContainer makeValueTen];
+
+			NSString *subsectionName = [[subsection firstElementMatchingPath:@"./td[2]"] content];
+			NSArray *split = [subsectionName componentsSeparatedByString:@" - "];
+			[subGradeContainer setName:[split objectAtIndex:1]];
+			[subGradeContainer setWeight:[[[split objectAtIndex:0] substringWithRange:NSMakeRange(3, 1)] integerValue]];
+
+			NSString *subsectionGrade = [[subsection firstElementMatchingPath:@"./td[3]"] content];
+			[subGradeContainer setGrade:[subsectionGrade americanFloat]];
+			NSString *subsectionAverage = [[subsection firstElementMatchingPath:@"./td[4]"] content];
+			[subGradeContainer setAverage:[subsectionAverage americanFloat]];
+			
+			NSMutableArray *subsubGradeContainers = [NSMutableArray array];
+			XMLElement *tableTd = [subsection firstElementMatchingPath:@"./td[5]"];
+			if (![[tableTd content] isEqualToString:@""]) {
+				NSArray *subsectionSubGrades = [[tableTd firstElementMatchingPath:@"./div/div/div/table"] elementsMatchingPath:@"./tr[@class!='headerTable1 p3']"];
+				for (XMLElement *subsubsection in subsectionSubGrades) {
+					GradeContainer *subsubsectionGradeContainer = [[[GradeContainer alloc] init] autorelease];
+					[subsubsectionGradeContainer setDebugLevel:3];
+					[subsubsectionGradeContainer setWeight:1];
+
+					NSString *subsubsectionName = [[[subsubsection firstElementMatchingPath:@"./td[1]"] content] substringFromIndex:5];
+					[subsubsectionGradeContainer setName:subsubsectionName];
+					NSString *subsubsectionGrade = [[subsubsection firstElementMatchingPath:@"./td[2]"] content];
+					[subsubsectionGradeContainer setGrade:[subsubsectionGrade americanFloat]];
+					NSString *subsubsectionValue = [[subsubsection firstElementMatchingPath:@"./td[3]"] content];
+					[subsubsectionGradeContainer setValue:[subsubsectionValue americanFloat]];
+					NSString *subsubsectionAverage = [[subsubsection firstElementMatchingPath:@"./td[4]"] content];
+					[subsubsectionGradeContainer setAverage:[subsubsectionAverage americanFloat]];
+
+					[subsubGradeContainers addObject:subsubsectionGradeContainer];
+				}
+			}
+			
+			[subGradeContainer setSubGradeContainers:subsubGradeContainers];
+			[subGradeContainers addObject:subGradeContainer];
+		}
+		
+		[subjectContainer setSubGradeContainers:subGradeContainers];
+		[subjectContainers addObject:subjectContainer];
 	}
 
 	[document release];
+	
+	[rootContainer setSubGradeContainers:subjectContainers];
+	[rootContainer calculateGradeFromSubgrades];
+	[rootContainer calculateAverageFromSubgrades];
+
+	NSLog(@"%@", rootContainer);
 }
 
 - (void)dealloc {

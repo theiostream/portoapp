@@ -45,1189 +45,7 @@ Code taken from third parties:
 
 /* External {{{ */
 
-/* Keychain {{{ */
-@interface KeychainItemWrapper : NSObject {
-    NSMutableDictionary *keychainItemData;      // The actual keychain item data backing store.
-    NSMutableDictionary *genericPasswordQuery;  // A placeholder for the generic keychain item query used to locate the item.
-}
- 
-@property (nonatomic, retain) NSMutableDictionary *keychainItemData;
-@property (nonatomic, retain) NSMutableDictionary *genericPasswordQuery;
- 
-// Designated initializer.
-- (id)initWithIdentifier: (NSString *)identifier accessGroup:(NSString *) accessGroup;
-- (void)setObject:(id)inObject forKey:(id)key;
-- (id)objectForKey:(id)key;
- 
-// Initializes and resets the default generic keychain item data.
-- (void)resetKeychainItem;
- 
-@end
-
-@interface KeychainItemWrapper (PrivateMethods)
-/*
-The decision behind the following two methods (secItemFormatToDictionary and dictionaryToSecItemFormat) was
-to encapsulate the transition between what the detail view controller was expecting (NSString *) and what the
-Keychain API expects as a validly constructed container class.
-*/
-- (NSMutableDictionary *)secItemFormatToDictionary:(NSDictionary *)dictionaryToConvert;
-- (NSMutableDictionary *)dictionaryToSecItemFormat:(NSDictionary *)dictionaryToConvert;
- 
-// Updates the item in the keychain, or adds it if it doesn't exist.
-- (void)writeToKeychain;
- 
-@end
- 
-@implementation KeychainItemWrapper
- 
-@synthesize keychainItemData, genericPasswordQuery;
- 
-- (id)initWithIdentifier: (NSString *)identifier accessGroup:(NSString *) accessGroup;
-{
-    if (self = [super init])
-    {
-        // Begin Keychain search setup. The genericPasswordQuery leverages the special user
-        // defined attribute kSecAttrGeneric to distinguish itself between other generic Keychain
-        // items which may be included by the same application.
-        genericPasswordQuery = [[NSMutableDictionary alloc] init];
-        
-        [genericPasswordQuery setObject:(id)kSecClassGenericPassword forKey:(id)kSecClass];
-        [genericPasswordQuery setObject:identifier forKey:(id)kSecAttrGeneric];
-        
-        // The keychain access group attribute determines if this item can be shared
-        // amongst multiple apps whose code signing entitlements contain the same keychain access group.
-        if (accessGroup != nil)
-        {
-#if TARGET_IPHONE_SIMULATOR
-            // Ignore the access group if running on the iPhone simulator.
-            // 
-            // Apps that are built for the simulator aren't signed, so there's no keychain access group
-            // for the simulator to check. This means that all apps can see all keychain items when run
-            // on the simulator.
-            //
-            // If a SecItem contains an access group attribute, SecItemAdd and SecItemUpdate on the
-            // simulator will return -25243 (errSecNoAccessForItem).
-#else           
-            [genericPasswordQuery setObject:accessGroup forKey:(id)kSecAttrAccessGroup];
-#endif
-        }
-        
-        // Use the proper search constants, return only the attributes of the first match.
-        [genericPasswordQuery setObject:(id)kSecMatchLimitOne forKey:(id)kSecMatchLimit];
-        [genericPasswordQuery setObject:(id)kCFBooleanTrue forKey:(id)kSecReturnAttributes];
-        
-        NSDictionary *tempQuery = [NSDictionary dictionaryWithDictionary:genericPasswordQuery];
-        
-        NSMutableDictionary *outDictionary = nil;
-        
-        if (! SecItemCopyMatching((CFDictionaryRef)tempQuery, (CFTypeRef *)&outDictionary) == noErr)
-        {
-            // Stick these default values into keychain item if nothing found.
-            [self resetKeychainItem];
-            
-            // Add the generic attribute and the keychain access group.
-            [keychainItemData setObject:identifier forKey:(id)kSecAttrGeneric];
-            if (accessGroup != nil)
-            {
-#if TARGET_IPHONE_SIMULATOR
-                // Ignore the access group if running on the iPhone simulator.
-                // 
-                // Apps that are built for the simulator aren't signed, so there's no keychain access group
-                // for the simulator to check. This means that all apps can see all keychain items when run
-                // on the simulator.
-                //
-                // If a SecItem contains an access group attribute, SecItemAdd and SecItemUpdate on the
-                // simulator will return -25243 (errSecNoAccessForItem).
-#else           
-                [keychainItemData setObject:accessGroup forKey:(id)kSecAttrAccessGroup];
-#endif
-            }
-        }
-        else
-        {
-            // load the saved data from Keychain.
-            self.keychainItemData = [self secItemFormatToDictionary:outDictionary];
-        }
-       
-        [outDictionary release];
-    }
-    
-    return self;
-}
- 
-- (void)dealloc
-{
-    [keychainItemData release];
-    [genericPasswordQuery release];
-    
-    [super dealloc];
-}
- 
-- (void)setObject:(id)inObject forKey:(id)key 
-{
-    if (inObject == nil) return;
-    id currentObject = [keychainItemData objectForKey:key];
-    if (![currentObject isEqual:inObject])
-    {
-        [keychainItemData setObject:inObject forKey:key];
-        [self writeToKeychain];
-    }
-}
- 
-- (id)objectForKey:(id)key
-{
-    return [keychainItemData objectForKey:key];
-}
- 
-- (void)resetKeychainItem
-{
-    OSStatus junk = noErr;
-    if (!keychainItemData) 
-    {
-        self.keychainItemData = [[NSMutableDictionary alloc] init];
-    }
-    else if (keychainItemData)
-    {
-        NSMutableDictionary *tempDictionary = [self dictionaryToSecItemFormat:keychainItemData];
-        junk = SecItemDelete((CFDictionaryRef)tempDictionary);
-        NSAssert( junk == noErr || junk == errSecItemNotFound, @"Problem deleting current dictionary." );
-    }
-    
-    // Default attributes for keychain item.
-    [keychainItemData setObject:@"" forKey:(id)kSecAttrAccount];
-    [keychainItemData setObject:@"" forKey:(id)kSecAttrLabel];
-    [keychainItemData setObject:@"" forKey:(id)kSecAttrDescription];
-    
-    // Default data for keychain item.
-    [keychainItemData setObject:@"" forKey:(id)kSecValueData];
-}
- 
-- (NSMutableDictionary *)dictionaryToSecItemFormat:(NSDictionary *)dictionaryToConvert
-{
-    // The assumption is that this method will be called with a properly populated dictionary
-    // containing all the right key/value pairs for a SecItem.
-    
-    // Create a dictionary to return populated with the attributes and data.
-    NSMutableDictionary *returnDictionary = [NSMutableDictionary dictionaryWithDictionary:dictionaryToConvert];
-    
-    // Add the Generic Password keychain item class attribute.
-    [returnDictionary setObject:(id)kSecClassGenericPassword forKey:(id)kSecClass];
-    
-    // Convert the NSString to NSData to meet the requirements for the value type kSecValueData.
-    // This is where to store sensitive data that should be encrypted.
-    NSString *passwordString = [dictionaryToConvert objectForKey:(id)kSecValueData];
-    [returnDictionary setObject:[passwordString dataUsingEncoding:NSUTF8StringEncoding] forKey:(id)kSecValueData];
-    
-    return returnDictionary;
-}
- 
-- (NSMutableDictionary *)secItemFormatToDictionary:(NSDictionary *)dictionaryToConvert
-{
-    // The assumption is that this method will be called with a properly populated dictionary
-    // containing all the right key/value pairs for the UI element.
-    
-    // Create a dictionary to return populated with the attributes and data.
-    NSMutableDictionary *returnDictionary = [NSMutableDictionary dictionaryWithDictionary:dictionaryToConvert];
-    
-    // Add the proper search key and class attribute.
-    [returnDictionary setObject:(id)kCFBooleanTrue forKey:(id)kSecReturnData];
-    [returnDictionary setObject:(id)kSecClassGenericPassword forKey:(id)kSecClass];
-    
-    // Acquire the password data from the attributes.
-    NSData *passwordData = NULL;
-    if (SecItemCopyMatching((CFDictionaryRef)returnDictionary, (CFTypeRef *)&passwordData) == noErr)
-    {
-        // Remove the search, class, and identifier key/value, we don't need them anymore.
-        [returnDictionary removeObjectForKey:(id)kSecReturnData];
-        
-        // Add the password to the dictionary, converting from NSData to NSString.
-        NSString *password = [[[NSString alloc] initWithBytes:[passwordData bytes] length:[passwordData length] 
-                                                     encoding:NSUTF8StringEncoding] autorelease];
-        [returnDictionary setObject:password forKey:(id)kSecValueData];
-    }
-    else
-    {
-        // Don't do anything if nothing is found.
-        NSAssert(NO, @"Serious error, no matching item found in the keychain.\n");
-    }
-    
-    [passwordData release];
-   
-    return returnDictionary;
-}
- 
-- (void)writeToKeychain
-{
-    NSDictionary *attributes = NULL;
-    NSMutableDictionary *updateItem = NULL;
-    OSStatus result;
-    
-    if (SecItemCopyMatching((CFDictionaryRef)genericPasswordQuery, (CFTypeRef *)&attributes) == noErr)
-    {
-        // First we need the attributes from the Keychain.
-        updateItem = [NSMutableDictionary dictionaryWithDictionary:attributes];
-        // Second we need to add the appropriate search key/values.
-        [updateItem setObject:[genericPasswordQuery objectForKey:(id)kSecClass] forKey:(id)kSecClass];
-        
-        // Lastly, we need to set up the updated attribute list being careful to remove the class.
-        NSMutableDictionary *tempCheck = [self dictionaryToSecItemFormat:keychainItemData];
-        [tempCheck removeObjectForKey:(id)kSecClass];
-        
-#if TARGET_IPHONE_SIMULATOR
-        // Remove the access group if running on the iPhone simulator.
-        // 
-        // Apps that are built for the simulator aren't signed, so there's no keychain access group
-        // for the simulator to check. This means that all apps can see all keychain items when run
-        // on the simulator.
-        //
-        // If a SecItem contains an access group attribute, SecItemAdd and SecItemUpdate on the
-        // simulator will return -25243 (errSecNoAccessForItem).
-        //
-        // The access group attribute will be included in items returned by SecItemCopyMatching,
-        // which is why we need to remove it before updating the item.
-        [tempCheck removeObjectForKey:(id)kSecAttrAccessGroup];
-#endif
-        
-        // An implicit assumption is that you can only update a single item at a time.
-        
-        result = SecItemUpdate((CFDictionaryRef)updateItem, (CFDictionaryRef)tempCheck);
-        NSAssert( result == noErr, @"Couldn't update the Keychain Item." );
-    }
-    else
-    {
-        // No previous item found; add the new one.
-        result = SecItemAdd((CFDictionaryRef)[self dictionaryToSecItemFormat:keychainItemData], NULL);
-        NSAssert( result == noErr, @"Couldn't add the Keychain Item." );
-    }
-}
- 
-@end
-
-/* }}} */
-
-/* XML {{{ */
-
-#import <libxml/tree.h>
-#import <libxml/parser.h>
-#import <libxml/HTMLparser.h>
-#import <libxml/xpath.h>
-#import <libxml/xpathInternals.h>
-
-@class XMLDocument;
-@interface XMLElement : NSObject {
-    xmlNodePtr node;
-    XMLDocument *document;
-    
-    NSArray *cachedChildren;
-    NSDictionary *cachedAttributes;
-    NSString *cachedContent;
-}
-
-- (id)initWithNode:(xmlNodePtr)node_ inDocument:(XMLDocument *)document_;
-- (NSString *)content;
-- (NSString *)tagName;
-- (NSArray *)children;
-- (NSDictionary *)attributes;
-- (NSString *)attributeWithName:(NSString *)name;
-- (BOOL)isTextNode;
-- (xmlNodePtr)node;
-
-- (NSArray *)elementsMatchingPath:(NSString *)xpath;
-- (XMLElement *)firstElementMatchingPath:(NSString *)xpath;
-@end
-
-
-@interface XMLDocument : NSObject {
-    xmlDocPtr document;
-}
-
-- (id)initWithHTMLData:(NSData *)data_;
-- (id)initWithXMLData:(NSData *)data_;
-- (NSArray *)elementsMatchingPath:(NSString *)query relativeToElement:(XMLElement *)element;
-- (NSArray *)elementsMatchingPath:(NSString *)xpath;
-- (XMLElement *)firstElementMatchingPath:(NSString *)xpath;
-- (xmlDocPtr)document;
-@end
-
-static int XMLElementOutputWriteCallback(void *context, const char *buffer, int len) {
-    NSMutableData *data = context;
-    [data appendBytes:buffer length:len];
-    return len;
-}
-
-static int XMLElementOutputCloseCallback(void *context) {
-    NSMutableData *data = context;
-    [data release];
-    return 0;
-}
-
-@implementation XMLElement
-- (void)dealloc {
-    [cachedChildren release];
-    [cachedAttributes release];
-    [cachedContent release];
-    [document release];
-    
-    [super dealloc];
-}
-
-- (id)initWithNode:(xmlNodePtr)node_ inDocument:(XMLDocument *)document_ {
-    if ((self = [super init])) {
-        node = node_;
-        document = [document_ retain];
-    }
-
-    return self;
-}
-
-- (NSUInteger)hash {
-    return (NSUInteger) node;
-}
-
-- (BOOL)isEqual:(id)object {
-    if ([object isKindOfClass:[XMLElement class]]) {
-        XMLElement *other = (XMLElement *)object;
-        return [other node] == node;
-    } else {
-        return NO;
-    }
-}
-
-- (NSString *)content {
-    if (cachedContent != nil) return cachedContent;
-    
-    NSMutableString *content = [[NSMutableString string] retain];
-    
-    if (![self isTextNode]) {
-        xmlNodePtr children = node->children;
-    
-        while (children) {
-            NSMutableData *data = [[NSMutableData alloc] init];
-            xmlOutputBufferPtr buffer = xmlOutputBufferCreateIO(XMLElementOutputWriteCallback, XMLElementOutputCloseCallback, data, NULL);
-            xmlNodeDumpOutput(buffer, [document document], children, 0, 0, "utf-8");
-            xmlOutputBufferFlush(buffer);
-            [content appendString:[[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease]];
-            xmlOutputBufferClose(buffer);
-            
-            children = children->next;
-        }
-    } else {
-        xmlChar *nodeContent = xmlNodeGetContent(node);
-        [content appendString:[NSString stringWithUTF8String:(char *) nodeContent]];
-        xmlFree(nodeContent);
-    }
-    
-    cachedContent = content;
-    return cachedContent;
-}
-
-
-- (NSString *)tagName {
-    if ([self isTextNode]) return nil;
-    
-    char *nodeName = (char *) node->name;
-    if (nodeName == NULL) nodeName = "";
-    
-    NSString *name = [NSString stringWithUTF8String:nodeName];
-    return name;
-}
-
-- (NSArray *)children {
-    if (cachedChildren != nil) return cachedChildren;
-    
-    xmlNodePtr list = node->children;
-    NSMutableArray *children = [NSMutableArray array];
-        
-    while (list) {
-        XMLElement *element = [[XMLElement alloc] initWithNode:list inDocument:document];
-        [children addObject:[element autorelease]];
-        
-        list = list->next;
-    }
-    
-    cachedChildren = [children retain];
-    return cachedChildren;
-}
-
-- (NSDictionary *)attributes {
-    if (cachedAttributes != nil) return cachedAttributes;
-    
-    NSMutableDictionary *attributes = [NSMutableDictionary dictionary];
-    xmlAttrPtr list = node->properties;
-    
-    while (list) {
-        NSString *name = nil, *value = nil;
-        
-        name = [NSString stringWithCString:(const char *) list->name encoding:NSUTF8StringEncoding];
-        if (list->children != NULL && list->children->content != NULL) {
-            value = [NSString stringWithCString:(const char *) list->children->content encoding:NSUTF8StringEncoding];
-        }
-        
-        if (name != nil && value != nil) {
-            [attributes setObject:value forKey:name];
-        }
-                    
-        list = list->next;
-    }
-
-    cachedAttributes = [attributes retain];
-    return cachedAttributes;
-}
-
-- (NSString *)attributeWithName:(NSString *)name {
-    return [[self attributes] objectForKey:name];
-}
-
-- (BOOL)isTextNode {
-    return node->type == XML_TEXT_NODE;
-}
-
-- (xmlNodePtr)node {
-    return node;
-}
-
-- (NSArray *)elementsMatchingPath:(NSString *)xpath {
-    return [document elementsMatchingPath:xpath relativeToElement:self];
-}
-
-- (XMLElement *)firstElementMatchingPath:(NSString *)xpath {
-    NSArray *elements = [self elementsMatchingPath:xpath];
-
-    if ([elements count] >= 1) {
-        return [elements objectAtIndex:0];
-    } else {
-        return nil;
-    }
-}
-@end
-
-@implementation XMLDocument
-
-- (void)dealloc {
-    xmlFreeDoc(document);
-    [super dealloc];
-}
-
-- (id)initWithData:(NSData *)data isXML:(BOOL)xml {
-    if ((self = [super init])) {
-        document = (xml ? xmlReadMemory : htmlReadMemory)([data bytes], [data length], "", NULL, xml ? XML_PARSE_RECOVER : HTML_PARSE_NOWARNING | HTML_PARSE_NOERROR);
-        
-        if (document == NULL) {
-            [self autorelease];
-            return nil;
-        }
-    }
-
-    return self;
-}
-
-- (xmlDocPtr)document {
-    return document;
-}
-
-- (id)initWithXMLData:(NSData *)data_ {
-    return [self initWithData:data_ isXML:YES];
-}
-
-- (id)initWithHTMLData:(NSData *)data_ {
-  return [self initWithData:data_ isXML:NO];
-}
-
-- (NSArray *)elementsMatchingPath:(NSString *)query relativeToElement:(XMLElement *)element {
-    xmlXPathContextPtr xpathCtx;
-    xmlXPathObjectPtr xpathObj;
-    
-    xpathCtx = xmlXPathNewContext(document);
-    if (xpathCtx == NULL) return nil;
-
-    xpathCtx->node = [element node];
-    
-    xpathObj = xmlXPathEvalExpression((xmlChar *) [query cStringUsingEncoding:NSUTF8StringEncoding], xpathCtx);
-    if (xpathObj == NULL) return nil;
-    
-    xmlNodeSetPtr nodes = xpathObj->nodesetval;
-    if (nodes == NULL) return nil;
-    
-    NSMutableArray *result = [NSMutableArray array];
-    for (NSInteger i = 0; i < nodes->nodeNr; i++) {
-        XMLElement *element = [[XMLElement alloc] initWithNode:nodes->nodeTab[i] inDocument:self];
-        [result addObject:[element autorelease]];
-    }
-    
-    xmlXPathFreeObject(xpathObj);
-    xmlXPathFreeContext(xpathCtx);
-    
-    return result;
-}
-
-- (NSArray *)elementsMatchingPath:(NSString *)xpath {
-    return [self elementsMatchingPath:xpath relativeToElement:nil];
-}
-
-- (XMLElement *)firstElementMatchingPath:(NSString *)xpath {
-    NSArray *elements = [self elementsMatchingPath:xpath];
-    
-    if ([elements count] >= 1) {
-        return [elements objectAtIndex:0];
-    } else {
-        return nil;
-    }
-}
-
-@end
-
-/* }}} */
-
-/* ABTableViewCell {{{ */
-
-@interface ABTableViewCell : UITableViewCell {
-	UIView* contentView;
-	UIView* selectedContentView;
-}
-
-- (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted; // subclasses should implement
-@end
-
-@interface ABTableViewCellView : UIView
-@end
-
-@interface ABTableViewSelectedCellView : UIView
-@end
-
-@implementation ABTableViewCellView
-- (id)initWithFrame:(CGRect)frame {
-	if((self = [super initWithFrame:frame])) {
-		self.contentMode = UIViewContentModeRedraw;
-	}
-
-	return self;
-}
-
-- (void)drawRect:(CGRect)rect {
-	[(ABTableViewCell *)[self superview] drawContentView:rect highlighted:NO];
-}
-@end
-
-@implementation ABTableViewSelectedCellView
-- (id)initWithFrame:(CGRect)frame {
-	if((self = [super initWithFrame:frame])) {
-		self.contentMode = UIViewContentModeRedraw;
-	}
-
-	return self;
-}
-
-- (void)drawRect:(CGRect)rect {
-	[(ABTableViewCell *)[self superview] drawContentView:rect highlighted:YES];
-}
-@end
-
-
-@implementation ABTableViewCell
-- (id)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
-    if(self = [super initWithStyle:style reuseIdentifier:reuseIdentifier]) {
-		contentView = [[ABTableViewCellView alloc] initWithFrame:CGRectZero];
-		contentView.opaque = YES;
-		self.backgroundView = contentView;
-		[contentView release];
-
-		selectedContentView = [[ABTableViewSelectedCellView alloc] initWithFrame:CGRectZero];
-		selectedContentView.opaque = YES;
-		self.selectedBackgroundView = selectedContentView;
-		[selectedContentView release];
-
-    }
-
-    return self;
-}
-
-- (void)dealloc {
-	[super dealloc];
-}
-
-- (void)setSelected:(BOOL)selected {
-	[selectedContentView setNeedsDisplay];
-
-	if(!selected && self.selected) {
-		[contentView setNeedsDisplay];
-	}
-
-	[super setSelected:selected];
-}
-
-- (void)setSelected:(BOOL)selected animated:(BOOL)animated {
-	[selectedContentView setNeedsDisplay];
-
-	if(!selected && self.selected) {
-		[contentView setNeedsDisplay];
-	}
-
-	[super setSelected:selected animated:animated];
-}
-
-- (void)setHighlighted:(BOOL)highlighted {
-	[selectedContentView setNeedsDisplay];
-
-	if(!highlighted && self.highlighted) {
-		[contentView setNeedsDisplay];
-	}
-
-	[super setHighlighted:highlighted];
-}
-
-- (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
-	[selectedContentView setNeedsDisplay];
-
-	if(!highlighted && self.highlighted) {
-		[contentView setNeedsDisplay];
-	}
-
-	[super setHighlighted:highlighted animated:animated];
-}
-
-- (void)setFrame:(CGRect)f {
-	[super setFrame:f];
-	CGRect b = [self bounds];
-	// b.size.height -= 1; // leave room for the seperator line
-	[contentView setFrame:b];
-	[selectedContentView setFrame:b];
-}
-
-- (void)setNeedsDisplay {
-	[super setNeedsDisplay];
-	[contentView setNeedsDisplay];
-
-	if([self isHighlighted] || [self isSelected]) {
-		[selectedContentView setNeedsDisplay];
-	}
-}
-
-- (void)setNeedsDisplayInRect:(CGRect)rect {
-	[super setNeedsDisplayInRect:rect];
-	[contentView setNeedsDisplayInRect:rect];
-
-	if([self isHighlighted] || [self isSelected]) {
-		[selectedContentView setNeedsDisplayInRect:rect];
-	}
-}
-
-- (void)layoutSubviews {
-	[super layoutSubviews];
-	self.contentView.hidden = YES;
-	[self.contentView removeFromSuperview];
-}
-
-- (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
-	return;
-}
-@end
-
-/* }}} */
-
-/* HTML NSString {{{ */
-
-@interface NSString (GTMNSStringHTMLAdditions)
-- (NSString *)gtm_stringByEscapingForHTML;
-- (NSString *)gtm_stringByEscapingForAsciiHTML;
-- (NSString *)gtm_stringByUnescapingFromHTML;
-@end
-
-typedef struct {
-  NSString *escapeSequence;
-  unichar uchar;
-} HTMLEscapeMap;
-
-// Taken from http://www.w3.org/TR/xhtml1/dtds.html#a_dtd_Special_characters
-// Ordered by uchar lowest to highest for bsearching
-static HTMLEscapeMap gAsciiHTMLEscapeMap[] = {
-  // A.2.2. Special characters
-  { @"&quot;", 34 },
-  { @"&amp;", 38 },
-  { @"&apos;", 39 },
-  { @"&lt;", 60 },
-  { @"&gt;", 62 },
-  
-    // A.2.1. Latin-1 characters
-  { @"&nbsp;", 160 }, 
-  { @"&iexcl;", 161 }, 
-  { @"&cent;", 162 }, 
-  { @"&pound;", 163 }, 
-  { @"&curren;", 164 }, 
-  { @"&yen;", 165 }, 
-  { @"&brvbar;", 166 }, 
-  { @"&sect;", 167 }, 
-  { @"&uml;", 168 }, 
-  { @"&copy;", 169 }, 
-  { @"&ordf;", 170 }, 
-  { @"&laquo;", 171 }, 
-  { @"&not;", 172 }, 
-  { @"&shy;", 173 }, 
-  { @"&reg;", 174 }, 
-  { @"&macr;", 175 }, 
-  { @"&deg;", 176 }, 
-  { @"&plusmn;", 177 }, 
-  { @"&sup2;", 178 }, 
-  { @"&sup3;", 179 }, 
-  { @"&acute;", 180 }, 
-  { @"&micro;", 181 }, 
-  { @"&para;", 182 }, 
-  { @"&middot;", 183 }, 
-  { @"&cedil;", 184 }, 
-  { @"&sup1;", 185 }, 
-  { @"&ordm;", 186 }, 
-  { @"&raquo;", 187 }, 
-  { @"&frac14;", 188 }, 
-  { @"&frac12;", 189 }, 
-  { @"&frac34;", 190 }, 
-  { @"&iquest;", 191 }, 
-  { @"&Agrave;", 192 }, 
-  { @"&Aacute;", 193 }, 
-  { @"&Acirc;", 194 }, 
-  { @"&Atilde;", 195 }, 
-  { @"&Auml;", 196 }, 
-  { @"&Aring;", 197 }, 
-  { @"&AElig;", 198 }, 
-  { @"&Ccedil;", 199 }, 
-  { @"&Egrave;", 200 }, 
-  { @"&Eacute;", 201 }, 
-  { @"&Ecirc;", 202 }, 
-  { @"&Euml;", 203 }, 
-  { @"&Igrave;", 204 }, 
-  { @"&Iacute;", 205 }, 
-  { @"&Icirc;", 206 }, 
-  { @"&Iuml;", 207 }, 
-  { @"&ETH;", 208 }, 
-  { @"&Ntilde;", 209 }, 
-  { @"&Ograve;", 210 }, 
-  { @"&Oacute;", 211 }, 
-  { @"&Ocirc;", 212 }, 
-  { @"&Otilde;", 213 }, 
-  { @"&Ouml;", 214 }, 
-  { @"&times;", 215 }, 
-  { @"&Oslash;", 216 }, 
-  { @"&Ugrave;", 217 }, 
-  { @"&Uacute;", 218 }, 
-  { @"&Ucirc;", 219 }, 
-  { @"&Uuml;", 220 }, 
-  { @"&Yacute;", 221 }, 
-  { @"&THORN;", 222 }, 
-  { @"&szlig;", 223 }, 
-  { @"&agrave;", 224 }, 
-  { @"&aacute;", 225 }, 
-  { @"&acirc;", 226 }, 
-  { @"&atilde;", 227 }, 
-  { @"&auml;", 228 }, 
-  { @"&aring;", 229 }, 
-  { @"&aelig;", 230 }, 
-  { @"&ccedil;", 231 }, 
-  { @"&egrave;", 232 }, 
-  { @"&eacute;", 233 }, 
-  { @"&ecirc;", 234 }, 
-  { @"&euml;", 235 }, 
-  { @"&igrave;", 236 }, 
-  { @"&iacute;", 237 }, 
-  { @"&icirc;", 238 }, 
-  { @"&iuml;", 239 }, 
-  { @"&eth;", 240 }, 
-  { @"&ntilde;", 241 }, 
-  { @"&ograve;", 242 }, 
-  { @"&oacute;", 243 }, 
-  { @"&ocirc;", 244 }, 
-  { @"&otilde;", 245 }, 
-  { @"&ouml;", 246 }, 
-  { @"&divide;", 247 }, 
-  { @"&oslash;", 248 }, 
-  { @"&ugrave;", 249 }, 
-  { @"&uacute;", 250 }, 
-  { @"&ucirc;", 251 }, 
-  { @"&uuml;", 252 }, 
-  { @"&yacute;", 253 }, 
-  { @"&thorn;", 254 }, 
-  { @"&yuml;", 255 },
-  
-  // A.2.2. Special characters cont'd
-  { @"&OElig;", 338 },
-  { @"&oelig;", 339 },
-  { @"&Scaron;", 352 },
-  { @"&scaron;", 353 },
-  { @"&Yuml;", 376 },
-
-  // A.2.3. Symbols
-  { @"&fnof;", 402 }, 
-
-  // A.2.2. Special characters cont'd
-  { @"&circ;", 710 },
-  { @"&tilde;", 732 },
-  
-  // A.2.3. Symbols cont'd
-  { @"&Alpha;", 913 }, 
-  { @"&Beta;", 914 }, 
-  { @"&Gamma;", 915 }, 
-  { @"&Delta;", 916 }, 
-  { @"&Epsilon;", 917 }, 
-  { @"&Zeta;", 918 }, 
-  { @"&Eta;", 919 }, 
-  { @"&Theta;", 920 }, 
-  { @"&Iota;", 921 }, 
-  { @"&Kappa;", 922 }, 
-  { @"&Lambda;", 923 }, 
-  { @"&Mu;", 924 }, 
-  { @"&Nu;", 925 }, 
-  { @"&Xi;", 926 }, 
-  { @"&Omicron;", 927 }, 
-  { @"&Pi;", 928 }, 
-  { @"&Rho;", 929 }, 
-  { @"&Sigma;", 931 }, 
-  { @"&Tau;", 932 }, 
-  { @"&Upsilon;", 933 }, 
-  { @"&Phi;", 934 }, 
-  { @"&Chi;", 935 }, 
-  { @"&Psi;", 936 }, 
-  { @"&Omega;", 937 }, 
-  { @"&alpha;", 945 }, 
-  { @"&beta;", 946 }, 
-  { @"&gamma;", 947 }, 
-  { @"&delta;", 948 }, 
-  { @"&epsilon;", 949 }, 
-  { @"&zeta;", 950 }, 
-  { @"&eta;", 951 }, 
-  { @"&theta;", 952 }, 
-  { @"&iota;", 953 }, 
-  { @"&kappa;", 954 }, 
-  { @"&lambda;", 955 }, 
-  { @"&mu;", 956 }, 
-  { @"&nu;", 957 }, 
-  { @"&xi;", 958 }, 
-  { @"&omicron;", 959 }, 
-  { @"&pi;", 960 }, 
-  { @"&rho;", 961 }, 
-  { @"&sigmaf;", 962 }, 
-  { @"&sigma;", 963 }, 
-  { @"&tau;", 964 }, 
-  { @"&upsilon;", 965 }, 
-  { @"&phi;", 966 }, 
-  { @"&chi;", 967 }, 
-  { @"&psi;", 968 }, 
-  { @"&omega;", 969 }, 
-  { @"&thetasym;", 977 }, 
-  { @"&upsih;", 978 }, 
-  { @"&piv;", 982 }, 
- 
-  // A.2.2. Special characters cont'd
-  { @"&ensp;", 8194 },
-  { @"&emsp;", 8195 },
-  { @"&thinsp;", 8201 },
-  { @"&zwnj;", 8204 },
-  { @"&zwj;", 8205 },
-  { @"&lrm;", 8206 },
-  { @"&rlm;", 8207 },
-  { @"&ndash;", 8211 },
-  { @"&mdash;", 8212 },
-  { @"&lsquo;", 8216 },
-  { @"&rsquo;", 8217 },
-  { @"&sbquo;", 8218 },
-  { @"&ldquo;", 8220 },
-  { @"&rdquo;", 8221 },
-  { @"&bdquo;", 8222 },
-  { @"&dagger;", 8224 },
-  { @"&Dagger;", 8225 },
-    // A.2.3. Symbols cont'd  
-  { @"&bull;", 8226 }, 
-  { @"&hellip;", 8230 }, 
- 
-  // A.2.2. Special characters cont'd
-  { @"&permil;", 8240 },
-  
-  // A.2.3. Symbols cont'd  
-  { @"&prime;", 8242 }, 
-  { @"&Prime;", 8243 }, 
-
-  // A.2.2. Special characters cont'd
-  { @"&lsaquo;", 8249 },
-  { @"&rsaquo;", 8250 },
-
-  // A.2.3. Symbols cont'd  
-  { @"&oline;", 8254 }, 
-  { @"&frasl;", 8260 }, 
-  
-  // A.2.2. Special characters cont'd
-  { @"&euro;", 8364 },
-
-  // A.2.3. Symbols cont'd  
-  { @"&image;", 8465 },
-  { @"&weierp;", 8472 }, 
-  { @"&real;", 8476 }, 
-  { @"&trade;", 8482 }, 
-  { @"&alefsym;", 8501 }, 
-  { @"&larr;", 8592 }, 
-  { @"&uarr;", 8593 }, 
-  { @"&rarr;", 8594 }, 
-  { @"&darr;", 8595 }, 
-  { @"&harr;", 8596 }, 
-  { @"&crarr;", 8629 }, 
-  { @"&lArr;", 8656 }, 
-  { @"&uArr;", 8657 }, 
-  { @"&rArr;", 8658 }, 
-  { @"&dArr;", 8659 }, 
-  { @"&hArr;", 8660 }, 
-  { @"&forall;", 8704 }, 
-  { @"&part;", 8706 }, 
-  { @"&exist;", 8707 }, 
-  { @"&empty;", 8709 }, 
-  { @"&nabla;", 8711 }, 
-  { @"&isin;", 8712 }, 
-  { @"&notin;", 8713 }, 
-  { @"&ni;", 8715 }, 
-  { @"&prod;", 8719 }, 
-  { @"&sum;", 8721 }, 
-  { @"&minus;", 8722 }, 
-  { @"&lowast;", 8727 }, 
-  { @"&radic;", 8730 }, 
-  { @"&prop;", 8733 }, 
-  { @"&infin;", 8734 }, 
-  { @"&ang;", 8736 }, 
-  { @"&and;", 8743 }, 
-  { @"&or;", 8744 }, 
-  { @"&cap;", 8745 }, 
-  { @"&cup;", 8746 }, 
-  { @"&int;", 8747 }, 
-  { @"&there4;", 8756 }, 
-  { @"&sim;", 8764 }, 
-  { @"&cong;", 8773 }, 
-  { @"&asymp;", 8776 }, 
-  { @"&ne;", 8800 }, 
-  { @"&equiv;", 8801 }, 
-  { @"&le;", 8804 }, 
-  { @"&ge;", 8805 }, 
-  { @"&sub;", 8834 }, 
-  { @"&sup;", 8835 }, 
-  { @"&nsub;", 8836 }, 
-  { @"&sube;", 8838 }, 
-  { @"&supe;", 8839 }, 
-  { @"&oplus;", 8853 }, 
-  { @"&otimes;", 8855 }, 
-  { @"&perp;", 8869 }, 
-  { @"&sdot;", 8901 }, 
-  { @"&lceil;", 8968 }, 
-  { @"&rceil;", 8969 }, 
-  { @"&lfloor;", 8970 }, 
-  { @"&rfloor;", 8971 }, 
-  { @"&lang;", 9001 }, 
-  { @"&rang;", 9002 }, 
-  { @"&loz;", 9674 }, 
-  { @"&spades;", 9824 }, 
-  { @"&clubs;", 9827 }, 
-  { @"&hearts;", 9829 }, 
-  { @"&diams;", 9830 }
-};
-
-// Taken from http://www.w3.org/TR/xhtml1/dtds.html#a_dtd_Special_characters
-// This is table A.2.2 Special Characters
-static HTMLEscapeMap gUnicodeHTMLEscapeMap[] = {
-  // C0 Controls and Basic Latin
-  { @"&quot;", 34 },
-  { @"&amp;", 38 },
-  { @"&apos;", 39 },
-  { @"&lt;", 60 },
-  { @"&gt;", 62 },
-
-  // Latin Extended-A
-  { @"&OElig;", 338 },
-  { @"&oelig;", 339 },
-  { @"&Scaron;", 352 },
-  { @"&scaron;", 353 },
-  { @"&Yuml;", 376 },
-  
-  // Spacing Modifier Letters
-  { @"&circ;", 710 },
-  { @"&tilde;", 732 },
-    
-  // General Punctuation
-  { @"&ensp;", 8194 },
-  { @"&emsp;", 8195 },
-  { @"&thinsp;", 8201 },
-  { @"&zwnj;", 8204 },
-  { @"&zwj;", 8205 },
-  { @"&lrm;", 8206 },
-  { @"&rlm;", 8207 },
-  { @"&ndash;", 8211 },
-  { @"&mdash;", 8212 },
-  { @"&lsquo;", 8216 },
-  { @"&rsquo;", 8217 },
-  { @"&sbquo;", 8218 },
-  { @"&ldquo;", 8220 },
-  { @"&rdquo;", 8221 },
-  { @"&bdquo;", 8222 },
-  { @"&dagger;", 8224 },
-  { @"&Dagger;", 8225 },
-  { @"&permil;", 8240 },
-  { @"&lsaquo;", 8249 },
-  { @"&rsaquo;", 8250 },
-  { @"&euro;", 8364 },
-};
-
-
-// Utility function for Bsearching table above
-static int EscapeMapCompare(const void *ucharVoid, const void *mapVoid) {
-  const unichar *uchar = (const unichar*)ucharVoid;
-  const HTMLEscapeMap *map = (const HTMLEscapeMap*)mapVoid;
-  int val;
-  if (*uchar > map->uchar) {
-    val = 1;
-  } else if (*uchar < map->uchar) {
-    val = -1;
-  } else {
-    val = 0;
-  }
-  return val;
-}
-
-@implementation NSString (GTMNSStringHTMLAdditions)
-- (NSString *)gtm_stringByEscapingHTMLUsingTable:(HTMLEscapeMap*)table 
-                                          ofSize:(NSUInteger)size 
-                                 escapingUnicode:(BOOL)escapeUnicode {  
-  NSUInteger length = [self length];
-  if (!length) {
-    return self;
-  }
-  
-  NSMutableString *finalString = [NSMutableString string];
-  NSMutableData *data2 = [NSMutableData dataWithCapacity:sizeof(unichar) * length];
-
-  // this block is common between GTMNSString+HTML and GTMNSString+XML but
-  // it's so short that it isn't really worth trying to share.
-  const unichar *buffer = CFStringGetCharactersPtr((CFStringRef)self);
-  if (!buffer) {
-    // We want this buffer to be autoreleased.
-    NSMutableData *data = [NSMutableData dataWithLength:length * sizeof(UniChar)];
-    if (!data) {
-      // COV_NF_START  - Memory fail case
-      return nil;
-      // COV_NF_END
-    }
-    [self getCharacters:[data mutableBytes]];
-    buffer = [data bytes];
-  }
-
-  if (!buffer || !data2) {
-    // COV_NF_START
-    return nil;
-    // COV_NF_END
-  }
-  
-  unichar *buffer2 = (unichar *)[data2 mutableBytes];
-  
-  NSUInteger buffer2Length = 0;
-  
-  for (NSUInteger i = 0; i < length; ++i) {
-    HTMLEscapeMap *val = bsearch(&buffer[i], table, 
-                                 size / sizeof(HTMLEscapeMap), 
-                                 sizeof(HTMLEscapeMap), EscapeMapCompare);
-    if (val || (escapeUnicode && buffer[i] > 127)) {
-      if (buffer2Length) {
-        CFStringAppendCharacters((CFMutableStringRef)finalString, 
-                                 buffer2, 
-                                 buffer2Length);
-        buffer2Length = 0;
-      }
-      if (val) {
-        [finalString appendString:val->escapeSequence];
-      }
-      else {
-        NSAssert(escapeUnicode && buffer[i] > 127, @"Illegal Character");
-        [finalString appendFormat:@"&#%d;", buffer[i]];
-      }
-    } else {
-      buffer2[buffer2Length] = buffer[i];
-      buffer2Length += 1;
-    }
-  }
-  if (buffer2Length) {
-    CFStringAppendCharacters((CFMutableStringRef)finalString, 
-                             buffer2, 
-                             buffer2Length);
-  }
-  return finalString;
-}
-
-- (NSString *)gtm_stringByEscapingForHTML {
-  return [self gtm_stringByEscapingHTMLUsingTable:gUnicodeHTMLEscapeMap 
-                                           ofSize:sizeof(gUnicodeHTMLEscapeMap) 
-                                  escapingUnicode:NO];
-} // gtm_stringByEscapingHTML
-
-- (NSString *)gtm_stringByEscapingForAsciiHTML {
-  return [self gtm_stringByEscapingHTMLUsingTable:gAsciiHTMLEscapeMap 
-                                           ofSize:sizeof(gAsciiHTMLEscapeMap) 
-                                  escapingUnicode:YES];
-} // gtm_stringByEscapingAsciiHTML
-
-- (NSString *)gtm_stringByUnescapingFromHTML {
-  NSRange range = NSMakeRange(0, [self length]);
-  NSRange subrange = [self rangeOfString:@"&" options:NSBackwardsSearch range:range];
-  
-  // if no ampersands, we've got a quick way out
-  if (subrange.length == 0) return self;
-  NSMutableString *finalString = [NSMutableString stringWithString:self];
-  do {
-    NSRange semiColonRange = NSMakeRange(subrange.location, NSMaxRange(range) - subrange.location);
-    semiColonRange = [self rangeOfString:@";" options:0 range:semiColonRange];
-    range = NSMakeRange(0, subrange.location);
-    // if we don't find a semicolon in the range, we don't have a sequence
-    if (semiColonRange.location == NSNotFound) {
-      continue;
-    }
-    NSRange escapeRange = NSMakeRange(subrange.location, semiColonRange.location - subrange.location + 1);
-    NSString *escapeString = [self substringWithRange:escapeRange];
-    NSUInteger length = [escapeString length];
-    // a squence must be longer than 3 (&lt;) and less than 11 (&thetasym;)
-    if (length > 3 && length < 11) {
-      if ([escapeString characterAtIndex:1] == '#') {
-        unichar char2 = [escapeString characterAtIndex:2];
-        if (char2 == 'x' || char2 == 'X') {
-          // Hex escape squences &#xa3;
-          NSString *hexSequence = [escapeString substringWithRange:NSMakeRange(3, length - 4)];
-          NSScanner *scanner = [NSScanner scannerWithString:hexSequence];
-          unsigned value;
-          if ([scanner scanHexInt:&value] && 
-              value < USHRT_MAX &&
-              value > 0 
-              && [scanner scanLocation] == length - 4) {
-            unichar uchar = (unichar)value;
-            NSString *charString = [NSString stringWithCharacters:&uchar length:1];
-            [finalString replaceCharactersInRange:escapeRange withString:charString];
-          }
-
-        } else {
-          // Decimal Sequences &#123;
-          NSString *numberSequence = [escapeString substringWithRange:NSMakeRange(2, length - 3)];
-          NSScanner *scanner = [NSScanner scannerWithString:numberSequence];
-          int value;
-          if ([scanner scanInt:&value] && 
-              value < USHRT_MAX &&
-              value > 0 
-              && [scanner scanLocation] == length - 3) {
-            unichar uchar = (unichar)value;
-            NSString *charString = [NSString stringWithCharacters:&uchar length:1];
-            [finalString replaceCharactersInRange:escapeRange withString:charString];
-          }
-        }
-      } else {
-        // "standard" sequences
-        for (unsigned i = 0; i < sizeof(gAsciiHTMLEscapeMap) / sizeof(HTMLEscapeMap); ++i) {
-          if ([escapeString isEqualToString:gAsciiHTMLEscapeMap[i].escapeSequence]) {
-            [finalString replaceCharactersInRange:escapeRange withString:[NSString stringWithCharacters:&gAsciiHTMLEscapeMap[i].uchar length:1]];
-            break;
-          }
-        }
-      }
-    }
-  } while ((subrange = [self rangeOfString:@"&" options:NSBackwardsSearch range:range]).length != 0);
-  return finalString;
-} // gtm_stringByUnescapingHTML
-@end
-
-/* }}} */
+#import "External.mm"
 
 /* }}} */
 
@@ -1305,6 +123,69 @@ static inline void Cache(NSString *key, id object) { [cache setObject:object for
 
 /* }}} */
 
+/* CoreText {{{ */
+
+/* Some history on these functions:
+./2013-09-18.txt:[18:11:35] <@theiostream> i'm using coretext
+./2013-09-18.txt:[19:23:51] <@theiostream> and Maximus, all made in coretext ;)
+./2013-09-18.txt:[19:32:55] <@theiostream> Maximus: coretext doesn't let me
+./2013-09-27.txt:[23:14:50] <@theiostream> i need to draw shit with coretext
+./2013-09-27.txt:[23:15:03] <@theiostream> since i need to spin the context to draw coretext
+./2013-09-27.txt:[23:16:47] <Maximus_> coretext is ok
+
+./2013-09-01.txt:[16:37:47] <@DHowett> fucking coretext
+*/
+
+static CFAttributedStringRef CreateBaseAttributedString(CTFontRef font, CGColorRef textColor, CFStringRef string, BOOL underlined, CTLineBreakMode lineBreakMode = kCTLineBreakByWordWrapping, CTTextAlignment alignment = kCTLeftTextAlignment)  {
+	if (string == NULL) string = (CFStringRef)@"";
+	
+	CGFloat spacing = 0.f;
+	CTParagraphStyleSetting settings[3] = {
+		{ kCTParagraphStyleSpecifierParagraphSpacingBefore, sizeof(CGFloat), &spacing },
+		{ kCTParagraphStyleSpecifierLineBreakMode, sizeof(CTLineBreakMode), &lineBreakMode },
+		{ kCTParagraphStyleSpecifierAlignment, sizeof(CTTextAlignment), &alignment }
+	};
+	CTParagraphStyleRef paragraphStyle = CTParagraphStyleCreate(settings, 3);
+	
+	int underline = underlined ? 1 : kCTUnderlineStyleNone;
+	CFNumberRef number = CFNumberCreate(NULL, kCFNumberIntType, &underline);
+
+	const CFStringRef attributeKeys[4] = { kCTFontAttributeName, kCTForegroundColorAttributeName, kCTParagraphStyleAttributeName, kCTUnderlineStyleAttributeName };
+	const CFTypeRef attributeValues[4] = { font, textColor, paragraphStyle, number };
+	CFDictionaryRef attributes = CFDictionaryCreate(NULL, (const void **)attributeKeys, (const void **)attributeValues, 4, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+
+	CFAttributedStringRef attributedString = CFAttributedStringCreate(NULL, string, attributes);
+	CFRelease(attributes);
+	CFRelease(number);
+	CFRelease(paragraphStyle);
+
+	return attributedString;
+}
+
+static CTFramesetterRef CreateFramesetter(CTFontRef font, CGColorRef textColor, CFStringRef string, BOOL underlined, CTLineBreakMode lineBreakMode = kCTLineBreakByWordWrapping, CTTextAlignment alignment = kCTLeftTextAlignment) {
+	CFAttributedStringRef attributedString = CreateBaseAttributedString(font, textColor, string, underlined, lineBreakMode);
+	CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString(attributedString);
+	CFRelease(attributedString);
+
+	return framesetter;
+}
+
+static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
+	CGPathRef path = CGPathCreateWithRect(rect, NULL);
+	CTFrameRef frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
+
+	CFRelease(path);
+	return frame;
+}
+
+static void DrawFramesetter(CGContextRef context, CTFramesetterRef framesetter, CGRect rect) {
+	CTFrameRef frame = CreateFrame(framesetter, rect);
+	CTFrameDraw(frame, context);
+	CFRelease(frame);
+}
+
+/* }}} */
+
 /* }}} */
 
 /* Constants {{{ */
@@ -1333,6 +214,10 @@ static inline void Cache(NSString *key, id object) { [cache setObject:object for
 		green:((float)((rgbValue & 0xFF00) >> 8))/255.0 \
 		blue:((float)(rgbValue & 0xFF))/255.0 \
 		alpha:a]
+
+// Thanks to http://stackoverflow.com/questions/139655/convert-pixels-to-points
+#define pxtopt(px) ( px * 72 / 96 )
+#define pttopx(pt) ( pt * 96 / 72 )
 
 /* }}} */
 
@@ -1603,8 +488,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @property(nonatomic, retain) NSString *grade;
 @property(nonatomic, retain) NSString *value;
 @property(nonatomic, retain) NSString *average;
-@property(nonatomic, retain) NSArray *subGradeContainers;
 @property(nonatomic, assign) NSInteger weight;
+
+@property(nonatomic, retain) NSArray *subGradeContainers;
+@property(nonatomic, retain) GradeContainer *superContainer;
+
 - (NSInteger)totalWeight;
 - (BOOL)isAboveAverage;
 
@@ -1613,8 +501,24 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (NSString *)gradePercentage;
 - (void)calculateGradeFromSubgrades;
 - (void)calculateAverageFromSubgrades;
+- (NSInteger)indexAtSupercontainer;
+- (float)gradeInSupercontainer;
 
 @property(nonatomic, assign) NSInteger debugLevel;
+@end
+
+@interface SubjectTableViewCell : ABTableViewCell
+@property(nonatomic, retain) GradeContainer *container;
+@end
+
+@interface SubjectTableHeaderView : UIScrollView
+@property(nonatomic, retain) GradeContainer *container;
+@end
+
+@interface SubjectView : UIView <UITableViewDataSource, UITableViewDelegate> {
+	GradeContainer *$container;
+}
+- (id)initWithFrame:(CGRect)frame container:(GradeContainer *)container;
 @end
 
 @interface GradesListViewController : WebDataViewController {
@@ -1623,14 +527,14 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	NSString *$viewState;
 	NSString *$eventValidation;
 
-	
+	GradeContainer *$rootContainer;
 }
 
 - (GradesListViewController *)initWithYear:(NSString *)year period:(NSString *)period viewState:(NSString *)viewState eventValidation:(NSString *)eventValidation;
 @property (nonatomic, retain) NSString *year;
 @property (nonatomic, retain) NSString *period;
 
-
+- (void)prepareContentView;
 @end
 
 @interface GradesLegacyListViewController : UIViewController {
@@ -1768,6 +672,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (id)initWithFrame:(CGRect)frame {
 	if ((self = [super initWithFrame:frame])) {
+		[self setBackgroundColor:[UIColor redColor]];
 
 		centerView = [[UIView alloc] initWithFrame:CGRectZero];
 		[centerView setBackgroundColor:[UIColor yellowColor]];
@@ -1790,7 +695,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)layoutSubviews {
 	[super layoutSubviews];
     
-	CGSize textSize = [text sizeWithFont:[UIFont systemFontOfSize:13.f] constrainedToSize:CGSizeMake(centerView.bounds.size.width, CGFLOAT_MAX) lineBreakMode:UILineBreakModeWordWrap];
+	CGSize textSize = [text sizeWithFont:[UIFont systemFontOfSize:13.f] constrainedToSize:CGSizeMake(centerView.bounds.size.width, CGFLOAT_MAX) lineBreakMode:NSLineBreakByWordWrapping];
 
     
 	// draw
@@ -2170,7 +1075,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[[self view] addSubview:$loadingView];
 
 	$failureView = [[FailView alloc] initWithFrame:[[self view] bounds]];
-	[$failureView setBackgroundColor:[UIColor whiteColor]];
+	[$failureView setBackgroundColor:[UIColor redColor]];
 	[$failureView setHidden:YES];
 	[[self view] addSubview:$failureView];
 	
@@ -2270,7 +1175,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[self $performUIBlock:^{
 		[self hideLoadingView];
 		[$failureView setHidden:YES];
+
+		NSLog(@"we just set $contentView.hidden to NO!");
 		[$contentView setHidden:NO];
+		NSLog(@"eh? %d", [$contentView isHidden]);
 	}];
 }
 
@@ -2573,7 +1481,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)updateForKeyboardNotification:(NSNotification *)notification {
     NSDictionary *userInfo = [notification userInfo];
     
-    UIViewAnimationCurve curve = [[userInfo objectForKey:UIKeyboardAnimationCurveUserInfoKey] intValue];
+    UIViewAnimationCurve curve = (UIViewAnimationCurve)[[userInfo objectForKey:UIKeyboardAnimationCurveUserInfoKey] intValue];
     NSTimeInterval duration = [[userInfo objectForKey:UIKeyboardAnimationDurationUserInfoKey] doubleValue];
     
     CGRect endingFrame = [[userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
@@ -2697,41 +1605,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @implementation NewsItemView
 
-static CTFramesetterRef CreateFramesetter(CTFontRef font, CGColorRef textColor, CFStringRef string, BOOL underlined) {
-	if (string == NULL) string = (CFStringRef)@"";
-	
-	CGFloat spacing = 0.f;
-	CTParagraphStyleSetting settings[1] = { kCTParagraphStyleSpecifierParagraphSpacingBefore, sizeof(CGFloat), &spacing };
-	CTParagraphStyleRef paragraphStyle = CTParagraphStyleCreate(settings, 1);
-	
-	int underline = underlined ? 1 : kCTUnderlineStyleNone;
-	CFNumberRef number = CFNumberCreate(NULL, kCFNumberIntType, &underline);
-
-	const CFStringRef attributeKeys[4] = { kCTFontAttributeName, kCTForegroundColorAttributeName, kCTParagraphStyleAttributeName, kCTUnderlineStyleAttributeName };
-	const CFTypeRef attributeValues[4] = { font, textColor, paragraphStyle, number };
-	CFDictionaryRef attributes = CFDictionaryCreate(NULL, (const void **)attributeKeys, (const void **)attributeValues, 4, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-
-	CFAttributedStringRef attributedString = CFAttributedStringCreate(NULL, string, attributes);
-	CFRelease(attributes);
-	CFRelease(number);
-	CFRelease(paragraphStyle);
-
-	CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString(attributedString);
-	
-	//CFRelease(paragraphStyle);
-	CFRelease(attributedString);
-
-	return framesetter;
-}
-
-static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
-	CGPathRef path = CGPathCreateWithRect(rect, NULL);
-	CTFrameRef frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
-
-	CFRelease(path);
-	return frame;
-}
-
 - (id)initWithFrame:(CGRect)frame {
 	if ((self = [super initWithFrame:frame])) {
 		sectionSize = CGSizeZero;
@@ -2781,7 +1654,7 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	if (contents != nil) [contents release];
 	contents = [contents_ retain];
 
-	bodyFramesetters = calloc([contents count], sizeof(CTFramesetterRef));
+	bodyFramesetters = (CTFramesetterRef *)calloc([contents count], sizeof(CTFramesetterRef));
 	bzero(bodyFramesetters, [contents count]);
 	
 	for (id content in contents) {
@@ -2795,7 +1668,7 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 
 - (CGFloat)heightOffset {
 	//return bodyFramesettersCount * CTFontGetSize(bodyFont)*96/72 + CTFontGetSize(subtitleFont)*96/72;
-	return 6 * CTFontGetSize(bodyFont)*96/72; // don't ask me why. Just don't. I don't know.
+	return 6 * pttopx(CTFontGetSize(bodyFont)); // don't ask me why. Just don't. I don't know.
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
@@ -2983,8 +1856,8 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 		
 		XMLElement *sectionElement = [content firstElementMatchingPath:@"./div[@class='titulo']/h2"];
 
-		NSString *class = [[content attributes] objectForKey:@"class"];
-		XMLElement *articleElement = [class hasSuffix:@"-2"] ? [content firstElementMatchingPath:@"./article"] : content;
+		NSString *cls = [[content attributes] objectForKey:@"class"];
+		XMLElement *articleElement = [cls hasSuffix:@"-2"] ? [content firstElementMatchingPath:@"./article"] : content;
 		NSArray *paragraphs = [articleElement elementsMatchingPath:@"./p[not(contains(text(), 'javascript:')) and string-length(text())>0]"];
 
 		XMLElement *titleElement = [articleElement firstElementMatchingPath:@"./h4"];
@@ -3234,6 +2107,9 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 @implementation NewsTableViewCell
 @synthesize newsImage = $newsImage, newsTitle = $newsTitle, newsSubtitle = $newsSubtitle;
 
+// [23:41:33] <@DHowett> theiostream: At the top of the function, get 'self.bounds' out into a local variable. each time you call it is a dynamic dispatch because the compiler cannot assume that it has no side-effects
+// [23:42:13] <@DHowett> theiostream: the attributed strings and their CTFrameshit should be cached whenver possible. do not create a new attributed string every time the rect is drawn
+
 - (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
 	CGContextRef context = UIGraphicsGetCurrentContext();
 
@@ -3265,7 +2141,6 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	CTLineRef line = CTLineCreateWithAttributedString((CFAttributedStringRef)titleString);
 	[titleString release];
 	
-	// XXX: Why is the text upside down?
 	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
 	CGContextTranslateCTM(context, 0, [self bounds].size.height);
 	CGContextScaleCTM(context, 1.0, -1.0);
@@ -3303,13 +2178,26 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 
 /* }}} */
 
+// To be honest, I don't like this.
+// We should use recursion. Recursive display of the tree, recursive building of the tree, etc.
+// I doubt Porto will ever require/do such thing (due to their css class naming, I doubt their system support recursion),
+// but I guess we should be better than them and implement this.
+// Maybe a finish-up update before release?
 /* Grades Controller {{{ */
 
 // Yay averages.
 // This is a node.
-// Container sounds better than GradeNode.
+// GradeContainer sounds better than GradeNode.
 @implementation GradeContainer
-@synthesize name, grade, value, average, subGradeContainers, weight, debugLevel;
+@synthesize name, grade, value, average, subGradeContainers, weight, debugLevel, superContainer;
+
+- (id)init {
+	if ((self = [super init])) {
+		debugLevel = 0;
+	}
+
+	return self;
+}
 
 - (NSInteger)totalWeight {
 	NSInteger ret = 0;
@@ -3339,8 +2227,13 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	[self setGrade:[NSString stringWithFormat:@"%.2f", (double)gradeSum / [self totalWeight]]];
 }
 
+- (float)gradeInSupercontainer {
+	NSInteger superTotalWeight = [[self superContainer] totalWeight];
+	return [[self grade] floatValue] * [self weight] / superTotalWeight;
+}
+
 - (void)makeValueTen {
-	[self setValue:[@"10,0" americanFloat]];
+	[self setValue:[@"10,00" americanFloat]];
 }
 
 - (void)calculateAverageFromSubgrades {
@@ -3351,16 +2244,22 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	[self setAverage:[NSString stringWithFormat:@"%.2f", (double)averageSum / [self totalWeight]]];
 }
 
+- (NSInteger)indexAtSupercontainer {
+	return [[[self superContainer] subGradeContainers] indexOfObject:self];
+}
+
 - (void)dealloc {
 	[name release];
 	[grade release];
 	[value release];
 	[average release];
 	[subGradeContainers release];
+	[superContainer release];
 
 	[super dealloc];
 }
 
+// debug. don't complain :p
 - (NSString *)description {
 	NSMutableString *tabString = [[[NSMutableString alloc] initWithString:@""] autorelease];
 	for (int i=0; i<[self debugLevel]; i++) [tabString appendString:@"\t"];
@@ -3374,6 +2273,261 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	}
 
 	return mutableString;
+}
+@end
+
+@implementation SubjectTableHeaderView
+@synthesize container;
+
+static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
+	UIColor *color;
+	
+	float grade = [grade_ floatValue];
+	if (grade < 6) color = graded ? UIColorFromHexWithAlpha(0xFF3300, 1.f) : UIColorFromHexWithAlpha(0xC75F5F, 1.f);
+	else if (grade < 8) color = graded ? UIColorFromHexWithAlpha(0xFFCC00, 1.f) : UIColorFromHexWithAlpha(0xC7A15F, 1.f);
+	else color = graded ? UIColorFromHexWithAlpha(0x33CC33, 1.f) : UIColorFromHexWithAlpha(0x5FA4C7, 1.f);
+	
+	return color;
+}
+
+- (void)drawRect:(CGRect)rect {
+	CGContextRef context = UIGraphicsGetCurrentContext();
+	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
+	CGContextTranslateCTM(context, 0, self.bounds.size.height);
+	CGContextScaleCTM(context, 1.0, -1.0);
+
+	[([container indexAtSupercontainer] % 2 == 0 ? UIColorFromHexWithAlpha(0xfafafa, 1.f) : [UIColor whiteColor]) setFill];
+	CGContextFillRect(context, rect);
+	
+	[ColorForGrade([container grade]) setFill];
+	CGRect circleRect = CGRectMake(8.f, 11.f, 22.f, 22.f);
+	CGContextFillEllipseInRect(context, circleRect);
+
+	CGFloat zoneHeight = rect.size.height/2;
+	
+	CGColorRef textColor = [[UIColor blackColor] CGColor];
+
+	NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
+	CTFontRef dataFont = CTFontCreateWithName((CFStringRef)systemFont, pxtopt(zoneHeight), NULL);
+	CTFontRef boldFont = CTFontCreateCopyWithSymbolicTraits(dataFont, pxtopt(zoneHeight), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
+	
+	CTFramesetterRef fpGradeFramesetter = CreateFramesetter(boldFont, textColor, (CFStringRef)[container grade], NO, kCTLineBreakByTruncatingTail);
+	CGSize gradeRequirement = CTFramesetterSuggestFrameSizeWithConstraints(fpGradeFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL);
+	gradeRequirement.width += 5.f;
+
+	CTFramesetterRef examFramesetter = CreateFramesetter(dataFont, textColor, (CFStringRef)[container name], NO, kCTLineBreakByTruncatingTail);
+	CGFloat examWidth = circleRect.origin.x + circleRect.size.width + 8.f;
+	CGRect examRect = CGRectMake(examWidth, zoneHeight/2, rect.size.width - examWidth - gradeRequirement.width, zoneHeight);
+	DrawFramesetter(context, examFramesetter, examRect);
+	CFRelease(examFramesetter);
+	
+	DrawFramesetter(context, fpGradeFramesetter, CGRectMake(examRect.origin.x + examRect.size.width, zoneHeight/2, gradeRequirement.width, zoneHeight));
+	CFRelease(fpGradeFramesetter);
+	
+	// nota, peso(ou valor), média, total
+	CGFloat zoneWidth2 = rect.size.width/4;
+	
+	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:[container grade]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFAttributedStringRef weightString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Peso\n" stringByAppendingString:[NSString stringWithFormat:@"%d", [container weight]]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:[container average]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:[NSString stringWithFormat:@"%.2f", [container gradeInSupercontainer]]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+
+	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
+	CFRange weightContentRange = CFRangeMake(5, CFAttributedStringGetLength(weightString_)-5);
+	CFRange averageContentRange = CFRangeMake(6, CFAttributedStringGetLength(averageString_)-6);
+	CFRange totalContentRange = CFRangeMake(6, CFAttributedStringGetLength(totalString_)-6);
+	
+	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
+	CFAttributedStringRemoveAttribute(gradeString, gradeContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(gradeString, gradeContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(gradeString_);
+	
+	CFMutableAttributedStringRef weightString = CFAttributedStringCreateMutableCopy(NULL, 0, weightString_);
+	CFAttributedStringRemoveAttribute(weightString, weightContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(weightString, weightContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(weightString_);
+
+	CFMutableAttributedStringRef averageString = CFAttributedStringCreateMutableCopy(NULL, 0, averageString_);
+	CFAttributedStringRemoveAttribute(averageString, averageContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(averageString, averageContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(averageString_);
+
+	CFMutableAttributedStringRef totalString = CFAttributedStringCreateMutableCopy(NULL, 0, totalString_);
+	CFAttributedStringRemoveAttribute(totalString, totalContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(totalString, totalContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(totalString_);
+
+	CTFramesetterRef gradeFramesetter = CTFramesetterCreateWithAttributedString(gradeString); CFRelease(gradeString);
+	CTFramesetterRef weightFramesetter = CTFramesetterCreateWithAttributedString(weightString); CFRelease(weightString);
+	CTFramesetterRef averageFramesetter = CTFramesetterCreateWithAttributedString(averageString); CFRelease(averageString);
+	CTFramesetterRef totalFramesetter = CTFramesetterCreateWithAttributedString(totalString); CFRelease(totalString);
+	
+	CGRect gradeRect = CGRectMake(rect.size.width, 0.f, zoneWidth2, rect.size.height);
+	CGRect weightRect = CGRectMake(rect.size.width + zoneWidth2, 0.f, zoneWidth2, rect.size.height);
+	CGRect averageRect = CGRectMake(rect.size.width + zoneWidth2*2, 0.f, zoneWidth2, rect.size.height);
+	CGRect totalRect = CGRectMake(rect.size.width + zoneWidth2*3, 0.f, zoneWidth2, rect.size.height);
+
+	DrawFramesetter(context, gradeFramesetter, gradeRect); CFRelease(gradeFramesetter);
+	DrawFramesetter(context, weightFramesetter, weightRect); CFRelease(weightFramesetter);
+	DrawFramesetter(context, averageFramesetter, averageRect); CFRelease(averageFramesetter);
+	DrawFramesetter(context, totalFramesetter, totalRect); CFRelease(totalFramesetter);
+	
+	CTFramesetterRef gradeLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Nota"), NO, kCTLineBreakByTruncatingTail);
+	CTFramesetterRef averageLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Média"), NO, kCTLineBreakByTruncatingTail);
+	
+	CGSize averageSize = CTFramesetterSuggestFrameSizeWithConstraints(averageLabelFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL);
+	averageSize.width += 5.f;
+	DrawFramesetter(context, gradeLabelFramesetter, CGRectMake(rect.size.width * 2 + 5.f, zoneHeight, averageSize.width, zoneHeight)); CFRelease(gradeLabelFramesetter);
+	DrawFramesetter(context, averageLabelFramesetter, CGRectMake(rect.size.width * 2 + 5.f, 0.f, averageSize.width, zoneHeight)); CFRelease(averageLabelFramesetter);
+
+	[UIColorFromHexWithAlpha(0xC0C0C0, 1.f) setFill];
+	CGFloat baseGraphWidth = rect.size.width - averageSize.width - 10.f;
+	CGRect baseGraphRect = CGRectMake(rect.size.width * 2 + averageSize.width + 5.f, 0.f, baseGraphWidth, 18.f);
+
+	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 2.f}, baseGraphRect.size});
+	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 24.f}, baseGraphRect.size});
+
+	CGFloat gradeBarWidth = [[container grade] floatValue] / [[container value] floatValue] * baseGraphWidth;
+	CGFloat averageBarWidth = [[container average] floatValue] / [[container value] floatValue] * baseGraphWidth;
+
+	[ColorForGrade([container average], NO) setFill];
+	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 2.f}, {averageBarWidth, baseGraphRect.size.height}});
+	[ColorForGrade([container grade]) setFill];
+	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 24.f}, {gradeBarWidth, baseGraphRect.size.height}});
+	
+	CFRelease(dataFont);
+	CFRelease(boldFont);
+
+}
+
+- (void)dealloc {
+	[container release];
+	[super dealloc];
+}
+@end
+
+@implementation SubjectTableViewCell
+@synthesize container;
+
+- (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
+	CGContextRef context = UIGraphicsGetCurrentContext();
+	
+	[[UIColor redColor] setFill];
+	CGContextFillRect(context, rect);
+}
+
+- (void)dealloc {
+	[container release];
+	[super dealloc];
+}
+@end
+
+@implementation SubjectView
+- (id)initWithFrame:(CGRect)frame container:(GradeContainer *)container {
+	if ((self = [super initWithFrame:frame])) {
+		$container = [container retain];
+
+		UITableView *tableView = [[UITableView alloc] initWithFrame:CGRectMake(0.f, 44.f, [self bounds].size.width, 260.f) style:UITableViewStylePlain];
+		[tableView setDataSource:self];
+		[tableView setDelegate:self];
+		[self addSubview:tableView];
+		[tableView release];
+		
+		UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 48.f)];
+		[nameLabel setBackgroundColor:[UIColor clearColor]];
+		[nameLabel setTextColor:[UIColor blackColor]];
+		[nameLabel setFont:[UIFont boldSystemFontOfSize:pxtopt(24.f)]];
+		[nameLabel setNumberOfLines:0];
+		[nameLabel setText:[container name]];
+		
+		/*CGFloat width = [nameLabel bounds].size.width;
+		[nameLabel sizeToFit];
+		[nameLabel setFrame:CGRectMake(nameLabel.bounds.origin.x, nameLabel.bounds.origin.y, width, nameLabel.bounds.size.height)];*/
+		
+		[self addSubview:nameLabel];
+		[nameLabel release];
+
+		NSString *gradeTitle = @"Nota: ";
+		NSString *averageTitle = @"Média: ";
+
+		NSMutableAttributedString *gradeAttributedString = [[NSMutableAttributedString alloc] initWithString:[gradeTitle stringByAppendingString:[container grade]]];
+		[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(22.f)] range:NSMakeRange(0, [gradeTitle length])];
+		[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(22.f)] range:NSMakeRange([gradeTitle length], [gradeAttributedString length]-[gradeTitle length]-1)];
+		
+		NSMutableAttributedString *averageAttributedString = [[NSMutableAttributedString alloc] initWithString:[averageTitle stringByAppendingString:[container average]]];
+		[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(22.f)] range:NSMakeRange(0, [averageTitle length])];
+		[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(22.f)] range:NSMakeRange([averageTitle length], [averageAttributedString length]-[averageTitle length]-1)];
+
+		UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 0.f, [self bounds].size.width/3, 22.f)];
+		[gradeLabel setBackgroundColor:[UIColor clearColor]];
+		[gradeLabel setTextColor:[UIColor blackColor]];
+		[gradeLabel setFont:[UIFont systemFontOfSize:pxtopt(22.f)]];
+		[gradeLabel setAttributedText:gradeAttributedString];
+		[self addSubview:gradeLabel];
+		[gradeLabel release];
+
+		UILabel *averageLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 22.f, [self bounds].size.width/3, 22.f)];
+		[averageLabel setBackgroundColor:[UIColor clearColor]];
+		[averageLabel setTextColor:[UIColor blackColor]];
+		[averageLabel setFont:[UIFont systemFontOfSize:pxtopt(22.f)]];
+		[averageLabel setAttributedText:averageAttributedString];
+		[self addSubview:averageLabel];
+		[averageLabel release];
+	}
+
+	return self;
+}
+
+- (void)drawRect:(CGRect)rect {
+	CGContextRef context = UIGraphicsGetCurrentContext();
+	
+	[[UIColor whiteColor] setFill];
+	CGContextFillRect(context, rect);
+
+	// draw graphs below the tableview here.
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return [[$container subGradeContainers] count];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	return [[[[$container subGradeContainers] objectAtIndex:section] subGradeContainers] count];
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	SubjectTableViewCell *cell = (SubjectTableViewCell *)[tableView dequeueReusableCellWithIdentifier:@"PortoAppSubjectViewTableViewCell"];
+	if (cell == nil) {
+		cell = [[[SubjectTableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppSubjectViewTableViewCell"] autorelease];
+	}
+
+	[cell setContainer:[[[[$container subGradeContainers] objectAtIndex:[indexPath section]] subGradeContainers] objectAtIndex:[indexPath row]]];
+	return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+	return 33.f;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+	return 44.f;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	SubjectTableHeaderView *headerView = [[[SubjectTableHeaderView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, [tableView sectionHeaderHeight])] autorelease];
+	[headerView setContentSize:CGSizeMake(headerView.bounds.size.width * 3, headerView.bounds.size.height)];
+	[headerView setPagingEnabled:YES];
+	[headerView setScrollsToTop:NO];
+	[headerView setShowsHorizontalScrollIndicator:NO];
+	[headerView setContainer:[[$container subGradeContainers] objectAtIndex:section]];
+
+	return headerView;
+}
+
+- (void)dealloc {
+	[$container release];
+
+	[super dealloc];
 }
 @end
 
@@ -3391,6 +2545,8 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 
 		[self setYear:year];
 		[self setPeriod:period];
+
+		$rootContainer = nil;
 	}
 
 	return self;
@@ -3426,26 +2582,30 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 	NSArray *subjectElements = [table elementsMatchingPath:@"./tr/td/div[@class='container']"];
 	NSLog(@"subjectElements: %@", subjectElements);
 	
-	GradeContainer *rootContainer = [[GradeContainer alloc] init];
-	[rootContainer setDebugLevel:0];
-	[rootContainer setWeight:1];
-	[rootContainer setName:@"Nota Total"];
-	[rootContainer makeValueTen];
+	$rootContainer = [[GradeContainer alloc] init];
+	[$rootContainer setDebugLevel:0];
+	[$rootContainer setWeight:1];
+	[$rootContainer setName:@"Nota Total"];
+	[$rootContainer makeValueTen];
 	
 	NSMutableArray *subjectContainers = [NSMutableArray array];
 	for (XMLElement *container in subjectElements) {
 		GradeContainer *subjectContainer = [[[GradeContainer alloc] init] autorelease];
+		[subjectContainer setSuperContainer:$rootContainer];
 		[subjectContainer setDebugLevel:1];
 		[subjectContainer makeValueTen];
 		[subjectContainer setWeight:1];
 		
 		NSString *subjectName = [[container firstElementMatchingPath:@"./h2[@class='fleft m10r ']/span"] content];
+		subjectName = [subjectName stringByReplacingOccurrencesOfString:@"LÍNG. ESTR. MOD. " withString:@""]; // remove LING ESTR MOD. I can now live in peace.
 		// B-Zug Fächer handeln
 		// denn ich kann
 		if ([subjectName hasPrefix:@"*"]) {
-			subjectName = [subjectName substringFromIndex:1];
-			subjectName = [subjectName stringByAppendingString:@" (\ue50e)"]; // \ue50e is meant to be a DE flag.
+			subjectName = [[subjectName substringFromIndex:1] substringToIndex:[subjectName length]-2];
+			subjectName = [subjectName stringByAppendingString:@"\ue50e"]; // \ue50e is meant to be a DE flag.
 		}
+		else if ([subjectName isEqualToString:@"ARTES VISUAIS"]) continue; // Fix a (porto) bug where we get DE + non-DE Kunst.
+
 		[subjectContainer setName:subjectName];
 
 		NSString *totalGrade = [[[[container firstElementMatchingPath:@"./h2[@class='fright ']/span/span[1]/span"] content] componentsSeparatedByString:@":"] objectAtIndex:1];
@@ -3458,6 +2618,7 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 		NSMutableArray *subGradeContainers = [NSMutableArray array];
 		for (XMLElement *subsection in subjectGrades) {
 			GradeContainer *subGradeContainer = [[[GradeContainer alloc] init] autorelease];
+			[subGradeContainer setSuperContainer:subjectContainer];
 			[subGradeContainer setDebugLevel:2];
 			[subGradeContainer makeValueTen];
 
@@ -3477,6 +2638,7 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 				NSArray *subsectionSubGrades = [[tableTd firstElementMatchingPath:@"./div/div/div/table"] elementsMatchingPath:@"./tr[@class!='headerTable1 p3']"];
 				for (XMLElement *subsubsection in subsectionSubGrades) {
 					GradeContainer *subsubsectionGradeContainer = [[[GradeContainer alloc] init] autorelease];
+					[subsubsectionGradeContainer setSuperContainer:subGradeContainer];
 					[subsubsectionGradeContainer setDebugLevel:3];
 					[subsubsectionGradeContainer setWeight:1];
 
@@ -3503,11 +2665,42 @@ static CTFrameRef CreateFrame(CTFramesetterRef framesetter, CGRect rect) {
 
 	[document release];
 	
-	[rootContainer setSubGradeContainers:subjectContainers];
-	[rootContainer calculateGradeFromSubgrades];
-	[rootContainer calculateAverageFromSubgrades];
+	[$rootContainer setSubGradeContainers:subjectContainers];
+	[$rootContainer calculateGradeFromSubgrades];
+	[$rootContainer calculateAverageFromSubgrades];
+	
+	/*      Cristina Santos: Olha só parabéns u.u
+		Cristina Santos: Gostei de ver
+	NSLog(@"%@", $rootContainer); */
 
-	NSLog(@"%@", rootContainer);
+	[self $performUIBlock:^{
+		[self prepareContentView];
+		[self displayContentView];
+		NSLog(@"content view is %@ so wat.", $contentView);
+	}];
+}
+
+- (void)loadContentView {
+	UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, [self view].bounds.size.width, [self view].bounds.size.height)];
+	[scrollView setBackgroundColor:[UIColor whiteColor]];
+	[scrollView setScrollsToTop:NO];
+	[scrollView setPagingEnabled:YES];
+
+	$contentView = scrollView;
+}
+
+- (void)prepareContentView {
+	UIScrollView *contentView = (UIScrollView *)$contentView;
+	NSArray *subjectContainers = [$rootContainer subGradeContainers];
+
+	CGRect subviewRect = CGRectMake(0.f, 0.f, [contentView bounds].size.width, [contentView bounds].size.height);
+	for (GradeContainer *subject in subjectContainers) {
+		SubjectView *subjectView = [[[SubjectView alloc] initWithFrame:subviewRect container:subject] autorelease];
+		[contentView addSubview:subjectView];
+
+		subviewRect.origin.x += subviewRect.size.width;
+	}
+	[contentView setContentSize:CGSizeMake(subviewRect.origin.x, [contentView bounds].size.height)];
 }
 
 - (void)dealloc {

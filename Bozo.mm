@@ -515,6 +515,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @property(nonatomic, retain) GradeContainer *container;
 @end
 
+@interface SubjectGraphView : UIView
+@property(nonatomic, retain) GradeContainer *container;
+@end
+
 @interface SubjectView : UIView <UITableViewDataSource, UITableViewDelegate> {
 	GradeContainer *$container;
 }
@@ -706,7 +710,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[image release];
 
 	[centerView release];
-	[imageView release];
 	[label release];
 
 	[super dealloc];
@@ -2178,12 +2181,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* }}} */
 
+/* Grades Controller {{{ */
 // To be honest, I don't like this.
 // We should use recursion. Recursive display of the tree, recursive building of the tree, etc.
 // I doubt Porto will ever require/do such thing (due to their css class naming, I doubt their system support recursion),
 // but I guess we should be better than them and implement this.
 // Maybe a finish-up update before release?
-/* Grades Controller {{{ */
 
 // Yay averages.
 // This is a node.
@@ -2299,10 +2302,11 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 	[([container indexAtSupercontainer] % 2 == 0 ? UIColorFromHexWithAlpha(0xfafafa, 1.f) : [UIColor whiteColor]) setFill];
 	CGContextFillRect(context, rect);
 	
+	// ZONE 1
 	[ColorForGrade([container grade]) setFill];
 	CGRect circleRect = CGRectMake(8.f, 11.f, 22.f, 22.f);
 	CGContextFillEllipseInRect(context, circleRect);
-
+	
 	CGFloat zoneHeight = rect.size.height/2;
 	
 	CGColorRef textColor = [[UIColor blackColor] CGColor];
@@ -2324,7 +2328,7 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 	DrawFramesetter(context, fpGradeFramesetter, CGRectMake(examRect.origin.x + examRect.size.width, zoneHeight/2, gradeRequirement.width, zoneHeight));
 	CFRelease(fpGradeFramesetter);
 	
-	// nota, peso(ou valor), média, total
+	// ZONE 2
 	CGFloat zoneWidth2 = rect.size.width/4;
 	
 	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:[container grade]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
@@ -2372,6 +2376,7 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 	DrawFramesetter(context, averageFramesetter, averageRect); CFRelease(averageFramesetter);
 	DrawFramesetter(context, totalFramesetter, totalRect); CFRelease(totalFramesetter);
 	
+	// ZONE 3
 	CTFramesetterRef gradeLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Nota"), NO, kCTLineBreakByTruncatingTail);
 	CTFramesetterRef averageLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Média"), NO, kCTLineBreakByTruncatingTail);
 	
@@ -2395,6 +2400,18 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 	[ColorForGrade([container grade]) setFill];
 	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 24.f}, {gradeBarWidth, baseGraphRect.size.height}});
 	
+	CTFontRef smallerFont_ = CTFontCreateWithName((CFStringRef)systemFont, pxtopt(baseGraphRect.size.height), NULL);
+	CTFontRef smallerFont = CTFontCreateCopyWithSymbolicTraits(smallerFont_, pxtopt(baseGraphRect.size.height), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
+
+	CTFramesetterRef gradeBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)[container grade], NO, kCTLineBreakByTruncatingTail);
+	CGFloat requiredWidth = CTFramesetterSuggestFrameSizeWithConstraints(gradeBarFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL).width;
+	DrawFramesetter(context, gradeBarFramesetter, CGRectMake(baseGraphRect.origin.x + gradeBarWidth - requiredWidth - 3.f, 24.f, requiredWidth, baseGraphRect.size.height)); CFRelease(gradeBarFramesetter);
+
+	CTFramesetterRef averageBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)[container average], NO, kCTLineBreakByTruncatingTail);
+	CGFloat requiredWidthAvg = CTFramesetterSuggestFrameSizeWithConstraints(averageBarFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL).width;
+	DrawFramesetter(context, averageBarFramesetter, CGRectMake(baseGraphRect.origin.x + averageBarWidth - requiredWidth - 3.f, 2.f, requiredWidthAvg, baseGraphRect.size.height)); CFRelease(averageBarFramesetter);
+	
+	CFRelease(smallerFont);
 	CFRelease(dataFont);
 	CFRelease(boldFont);
 
@@ -2422,69 +2439,84 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 }
 @end
 
-@implementation SubjectView
-- (id)initWithFrame:(CGRect)frame container:(GradeContainer *)container {
-	if ((self = [super initWithFrame:frame])) {
-		$container = [container retain];
-
-		UITableView *tableView = [[UITableView alloc] initWithFrame:CGRectMake(0.f, 44.f, [self bounds].size.width, 260.f) style:UITableViewStylePlain];
-		[tableView setDataSource:self];
-		[tableView setDelegate:self];
-		[self addSubview:tableView];
-		[tableView release];
-		
-		UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 48.f)];
-		[nameLabel setBackgroundColor:[UIColor clearColor]];
-		[nameLabel setTextColor:[UIColor blackColor]];
-		[nameLabel setFont:[UIFont boldSystemFontOfSize:pxtopt(24.f)]];
-		[nameLabel setNumberOfLines:0];
-		[nameLabel setText:[container name]];
-		
-		/*CGFloat width = [nameLabel bounds].size.width;
-		[nameLabel sizeToFit];
-		[nameLabel setFrame:CGRectMake(nameLabel.bounds.origin.x, nameLabel.bounds.origin.y, width, nameLabel.bounds.size.height)];*/
-		
-		[self addSubview:nameLabel];
-		[nameLabel release];
-
-		NSString *gradeTitle = @"Nota: ";
-		NSString *averageTitle = @"Média: ";
-
-		NSMutableAttributedString *gradeAttributedString = [[NSMutableAttributedString alloc] initWithString:[gradeTitle stringByAppendingString:[container grade]]];
-		[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(22.f)] range:NSMakeRange(0, [gradeTitle length])];
-		[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(22.f)] range:NSMakeRange([gradeTitle length], [gradeAttributedString length]-[gradeTitle length]-1)];
-		
-		NSMutableAttributedString *averageAttributedString = [[NSMutableAttributedString alloc] initWithString:[averageTitle stringByAppendingString:[container average]]];
-		[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(22.f)] range:NSMakeRange(0, [averageTitle length])];
-		[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(22.f)] range:NSMakeRange([averageTitle length], [averageAttributedString length]-[averageTitle length]-1)];
-
-		UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 0.f, [self bounds].size.width/3, 22.f)];
-		[gradeLabel setBackgroundColor:[UIColor clearColor]];
-		[gradeLabel setTextColor:[UIColor blackColor]];
-		[gradeLabel setFont:[UIFont systemFontOfSize:pxtopt(22.f)]];
-		[gradeLabel setAttributedText:gradeAttributedString];
-		[self addSubview:gradeLabel];
-		[gradeLabel release];
-
-		UILabel *averageLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 22.f, [self bounds].size.width/3, 22.f)];
-		[averageLabel setBackgroundColor:[UIColor clearColor]];
-		[averageLabel setTextColor:[UIColor blackColor]];
-		[averageLabel setFont:[UIFont systemFontOfSize:pxtopt(22.f)]];
-		[averageLabel setAttributedText:averageAttributedString];
-		[self addSubview:averageLabel];
-		[averageLabel release];
-	}
-
-	return self;
-}
+@implementation SubjectGraphView
+@synthesize container;
 
 - (void)drawRect:(CGRect)rect {
 	CGContextRef context = UIGraphicsGetCurrentContext();
 	
 	[[UIColor whiteColor] setFill];
 	CGContextFillRect(context, rect);
+}
 
-	// draw graphs below the tableview here.
+- (void)dealloc {
+	[container release];
+	[super dealloc];
+}
+@end
+
+@implementation SubjectView
+- (id)initWithFrame:(CGRect)frame container:(GradeContainer *)container {
+	if ((self = [super initWithFrame:frame])) {
+		$container = [container retain];
+		[self setBackgroundColor:[UIColor whiteColor]];
+
+		UITableView *tableView = [[UITableView alloc] initWithFrame:(CGRect){{0.f, 0.f}, [self bounds].size} style:UITableViewStylePlain];
+		[tableView setDataSource:self];
+		[tableView setDelegate:self];
+		[self addSubview:tableView];
+		[tableView release];
+		
+		UIView *tableHeaderView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 54.f)];
+		CGFloat halfHeight = [tableHeaderView bounds].size.height/2;
+
+		UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f)];
+		[nameLabel setBackgroundColor:[UIColor clearColor]];
+		[nameLabel setTextColor:[UIColor blackColor]];
+		[nameLabel setFont:[UIFont boldSystemFontOfSize:pxtopt(halfHeight)]];
+		[nameLabel setNumberOfLines:0];
+		[nameLabel setText:[container name]];
+		[tableHeaderView addSubview:nameLabel];
+		/*CGFloat width = [nameLabel bounds].size.width;
+		[nameLabel sizeToFit];
+		[nameLabel setFrame:CGRectMake(nameLabel.bounds.origin.x, nameLabel.bounds.origin.y, width, nameLabel.bounds.size.height)];*/
+		[nameLabel release];
+
+		NSString *gradeTitle = @"Nota: ";
+		NSString *averageTitle = @"Média: ";
+
+		NSMutableAttributedString *gradeAttributedString = [[NSMutableAttributedString alloc] initWithString:[gradeTitle stringByAppendingString:[container grade]]];
+		[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [gradeTitle length])];
+		[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([gradeTitle length], [gradeAttributedString length]-[gradeTitle length])];
+		
+		NSMutableAttributedString *averageAttributedString = [[NSMutableAttributedString alloc] initWithString:[averageTitle stringByAppendingString:[container average]]];
+		[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [averageTitle length])];
+		[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([averageTitle length], [averageAttributedString length]-[averageTitle length])];
+
+		UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 0.f, [self bounds].size.width/3, 27.f)];
+		[gradeLabel setBackgroundColor:[UIColor clearColor]];
+		[gradeLabel setTextColor:[UIColor blackColor]];
+		[gradeLabel setAttributedText:gradeAttributedString];
+		[tableHeaderView addSubview:gradeLabel];
+		[gradeLabel release];
+
+		UILabel *averageLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 22.f, [self bounds].size.width/3, 27.f)];
+		[averageLabel setBackgroundColor:[UIColor clearColor]];
+		[averageLabel setTextColor:[UIColor blackColor]];
+		[averageLabel setAttributedText:averageAttributedString];
+		[tableHeaderView addSubview:averageLabel];
+		[averageLabel release];
+
+		[tableView setTableHeaderView:tableHeaderView];
+		[tableHeaderView release];
+
+		SubjectGraphView *footerView = [[SubjectGraphView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 60.f)];
+		[footerView setContainer:$container];
+		[tableView setTableFooterView:footerView];
+		[footerView release];
+	}
+
+	return self;
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -2602,7 +2634,7 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 		// denn ich kann
 		if ([subjectName hasPrefix:@"*"]) {
 			subjectName = [[subjectName substringFromIndex:1] substringToIndex:[subjectName length]-2];
-			subjectName = [subjectName stringByAppendingString:@"\ue50e"]; // \ue50e is meant to be a DE flag.
+			subjectName = [subjectName stringByAppendingString:@" \ue50e"]; // \ue50e is meant to be a DE flag.
 		}
 		else if ([subjectName isEqualToString:@"ARTES VISUAIS"]) continue; // Fix a (porto) bug where we get DE + non-DE Kunst.
 

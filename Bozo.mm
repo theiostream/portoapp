@@ -2598,7 +2598,6 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 	}
 
 	[(SubjectTableViewCellContentView *)[[cell contentView] viewWithTag:55] setContainer:[[[[$container subGradeContainers] objectAtIndex:[indexPath section]] subGradeContainers] objectAtIndex:[indexPath row]]];
-	[cell setNeedsDisplay];
 
 	return cell;
 }
@@ -2612,7 +2611,7 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-	SubjectTableViewCellContentView *headerView = [[[SubjectTableViewCellContentView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, [tableView sectionHeaderHeight])] autorelease];
+	SubjectTableHeaderView *headerView = [[[SubjectTableHeaderView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, [tableView sectionHeaderHeight])] autorelease];
 	//[headerView setContentSize:CGSizeMake(headerView.bounds.size.width * 3, headerView.bounds.size.height)];
 	//[headerView setPagingEnabled:YES];
 	//[headerView setScrollsToTop:NO];

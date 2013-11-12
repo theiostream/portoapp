@@ -41,6 +41,7 @@ Code taken from third parties:
 #import <UIKit/UIKit.h>
 #import <Security/Security.h>
 #import <CoreText/CoreText.h>
+#import <QuartzCore/QuartzCore.h>
 
 #include <map>
 /* }}} */
@@ -303,6 +304,33 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Views {{{ */
 
+/* Pie Chart View {{{ */
+
+#define deg2rad(deg) (deg * (M_PI/180.f))
+#define rad2deg(rad) (rad * (180.f/M_PI))
+
+typedef struct _PieChartPiece {
+	int percentage;
+	uint32_t color;
+	NSString *text;
+} PieChartPiece;
+
+@protocol PieChartViewDelegate;
+
+@interface PieChartView : UIView
+@property(nonatomic, assign) id<PieChartViewDelegate> delegate;
+
+- (id)initWithFrame:(CGRect)frame pieces:(PieChartPiece *)pieces count:(NSUInteger)count inset:(CGFloat)inset fillEmpty:(BOOL)fill;
+@end
+
+@protocol PieChartViewDelegate <NSObject>
+@required
+@optional
+- (void)pieChartView:(PieChartView *)view didSelectPiece:(PieChartPiece)piece;
+@end
+
+/* }}} */
+
 /* Loading Indicator View {{{ */
 
 @interface LoadingIndicatorView : UIView {
@@ -520,11 +548,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface SubjectTableViewCellContentView : TestView
 @end
 
-@interface SubjectGraphView : UIView
-@property(nonatomic, retain) GradeContainer *container;
-@end
-
-@interface SubjectView : UIView <UITableViewDataSource, UITableViewDelegate> {
+@interface SubjectView : UIView <UITableViewDataSource, UITableViewDelegate, PieChartViewDelegate> {
 	GradeContainer *$container;
 }
 - (id)initWithFrame:(CGRect)frame container:(GradeContainer *)container;
@@ -718,6 +742,51 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[label release];
 
 	[super dealloc];
+}
+@end
+
+/* }}} */
+
+/* Pie Chart View {{{ */
+
+
+@implementation PieChartView
+- (id)initWithFrame:(CGRect)frame pieces:(PieChartPiece *)pieces count:(NSUInteger)count inset:(CGFloat)inset fillEmpty:(BOOL)fill {
+	if ((self = [super initWithFrame:frame])) {
+		NSLog(@"INITIALIZING VIEW");
+		CGFloat totalAngle = 0.f;
+		
+		for (int i=0; i<count; i++) {
+			PieChartPiece piece = pieces[i];
+			CGFloat angle = deg2rad(-(piece.percentage * 360.f / 100.f));
+			totalAngle += angle;
+		}
+		
+		CGPoint center = [self center];
+		CGFloat radius = [self bounds].size.width/2 - inset;
+		
+		CGFloat startAngle = totalAngle/2;
+		for (int i=0; i<count; i++) {
+			PieChartPiece piece = pieces[i];
+			CGFloat deg = piece.percentage * 360.f / 100.f;
+			NSLog(@"startAngle deg: %f", rad2deg(startAngle));
+			NSLog(@"deg: %f", deg);
+			
+			CGMutablePathRef path = CGPathCreateMutable();
+			CGPathMoveToPoint(path, NULL, center.x, center.y);
+			CGPathAddArc(path, NULL, center.x, center.y, radius, startAngle, startAngle + deg2rad(deg), false);
+			startAngle += deg2rad(deg);
+			
+			CAShapeLayer *layer = [CAShapeLayer layer];
+			[layer setPath:path];
+			[layer setFillColor:[UIColorFromHexWithAlpha(piece.color, 1.f) CGColor]];
+			[[self layer] addSublayer:layer];
+
+			CGPathRelease(path);
+		}
+	}
+
+	return self;
 }
 @end
 
@@ -2224,7 +2293,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (NSString *)gradePercentage {
-	return [NSString stringWithFormat:@"%.2f%%", [self $gradePercentage]];
+	return [NSString stringWithFormat:@"%.0f%%", [self $gradePercentage]];
 }
 
 - (void)calculateGradeFromSubgrades {
@@ -2284,8 +2353,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 @end
 
+// FIXME: Review ranges on both classes.
 @implementation SubjectTableHeaderView
-// Received rect's zone2 is {{rect.size.width, 0}, {rect.size.width/3, rect.size.height}}
 - (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
 	CGFloat zoneWidth2 = rect.size.width/4;
 	
@@ -2337,12 +2406,14 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @implementation SubjectTableViewCellContentView
 - (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
-	CGFloat zoneWidth2 = rect.size.width / 4;
+	CGFloat zoneWidth2 = rect.size.width / 5;
 	
 	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:[[self container] grade]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
 	CFAttributedStringRef valueString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Valor\n" stringByAppendingString:[[self container] value]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange valueContentRange = CFRangeMake(5, CFAttributedStringGetLength(valueString_)-5);
+	CFAttributedStringRef percentString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"%\n" stringByAppendingString:[[self container] gradePercentage]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange percentContentRange = CFRangeMake(2, CFAttributedStringGetLength(percentString_)-2);
 	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:[[self container] average]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange averageContentRange = CFRangeMake(5, CFAttributedStringGetLength(averageString_)-5);
 	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:[NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
@@ -2358,6 +2429,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CFAttributedStringSetAttribute(valueString, valueContentRange, kCTFontAttributeName, boldFont);
 	CFRelease(valueString_);
 
+	CFMutableAttributedStringRef percentString = CFAttributedStringCreateMutableCopy(NULL, 0, percentString_);
+	CFAttributedStringRemoveAttribute(percentString, percentContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(percentString, percentContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(percentString_);
+	
 	CFMutableAttributedStringRef averageString = CFAttributedStringCreateMutableCopy(NULL, 0, averageString_);
 	CFAttributedStringRemoveAttribute(averageString, averageContentRange, kCTFontAttributeName);
 	CFAttributedStringSetAttribute(averageString, averageContentRange, kCTFontAttributeName, boldFont);
@@ -2370,16 +2446,19 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	
 	CTFramesetterRef gradeFramesetter = CTFramesetterCreateWithAttributedString(gradeString); CFRelease(gradeString);
 	CTFramesetterRef valueFramesetter = CTFramesetterCreateWithAttributedString(valueString); CFRelease(valueString);
+	CTFramesetterRef percentFramesetter = CTFramesetterCreateWithAttributedString(percentString); CFRelease(percentString);
 	CTFramesetterRef averageFramesetter = CTFramesetterCreateWithAttributedString(averageString); CFRelease(averageString);
 	CTFramesetterRef totalFramesetter = CTFramesetterCreateWithAttributedString(totalString); CFRelease(totalString);
 	
 	CGRect gradeRect = CGRectMake(rect.origin.x, 0.f, zoneWidth2, rect.size.height);
 	CGRect valueRect = CGRectMake(rect.origin.x + zoneWidth2, 0.f, zoneWidth2, rect.size.height);
-	CGRect averageRect = CGRectMake(rect.origin.x + zoneWidth2*2, 0.f, zoneWidth2, rect.size.height);
-	CGRect totalRect = CGRectMake(rect.origin.x + zoneWidth2*3, 0.f, zoneWidth2, rect.size.height);
+	CGRect percentRect = CGRectMake(rect.origin.x + zoneWidth2*2, 0.f, zoneWidth2, rect.size.height);
+	CGRect averageRect = CGRectMake(rect.origin.x + zoneWidth2*3, 0.f, zoneWidth2, rect.size.height);
+	CGRect totalRect = CGRectMake(rect.origin.x + zoneWidth2*4, 0.f, zoneWidth2, rect.size.height);
 
 	DrawFramesetter(context, gradeFramesetter, gradeRect); CFRelease(gradeFramesetter);
 	DrawFramesetter(context, valueFramesetter, valueRect); CFRelease(valueFramesetter);
+	DrawFramesetter(context, percentFramesetter, percentRect); CFRelease(percentFramesetter);
 	DrawFramesetter(context, averageFramesetter, averageRect); CFRelease(averageFramesetter);
 	DrawFramesetter(context, totalFramesetter, totalRect); CFRelease(totalFramesetter);
 }
@@ -2487,23 +2566,6 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 
 - (void)dealloc {
 	[container release];
-
-	[super dealloc];
-}
-@end
-
-@implementation SubjectGraphView
-@synthesize container;
-
-- (void)drawRect:(CGRect)rect {
-	CGContextRef context = UIGraphicsGetCurrentContext();
-	
-	[[UIColor whiteColor] setFill];
-	CGContextFillRect(context, rect);
-}
-
-- (void)dealloc {
-	[container release];
 	[super dealloc];
 }
 @end
@@ -2523,7 +2585,8 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 		
 		UIView *tableHeaderView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 54.f)];
 		CGFloat halfHeight = [tableHeaderView bounds].size.height/2;
-
+		
+		// FIXME: Use CoreText instead of attributed UILabels.
 		UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f)];
 		[nameLabel setBackgroundColor:[UIColor clearColor]];
 		[nameLabel setTextColor:[UIColor blackColor]];
@@ -2563,9 +2626,18 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 
 		[tableView setTableHeaderView:tableHeaderView];
 		[tableHeaderView release];
+		
+		UIView *footerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 60.f)];
+		
+		PieChartPiece *pieces = (PieChartPiece *)calloc(2, sizeof(PieChartPiece));
+		pieces[0] = (PieChartPiece){ 25, 0x0, @"bozo" };
+		pieces[1] = (PieChartPiece){ 12, 0xff0000, @"yay" };
 
-		SubjectGraphView *footerView = [[SubjectGraphView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 60.f)];
-		[footerView setContainer:$container];
+		PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, 60.f, 60.f) pieces:pieces count:2 inset:10.f fillEmpty:NO];
+		[mainPieChart setDelegate:self];
+		[footerView addSubview:mainPieChart];
+		[mainPieChart release];
+
 		[tableView setTableFooterView:footerView];
 		[footerView release];
 	}

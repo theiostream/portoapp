@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		ED041D021832BF4E007D2CEC /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED041D011832BF4E007D2CEC /* QuartzCore.framework */; };
 		ED3620EE17E27CE9003277EB /* bg_nav.png in Resources */ = {isa = PBXBuildFile; fileRef = ED3620ED17E27CE9003277EB /* bg_nav.png */; };
 		ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */ = {isa = PBXBuildFile; fileRef = ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */; };
 		ED8DD83417EA2B0800864BFA /* CoreText.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED8DD83317EA2B0800864BFA /* CoreText.framework */; };
@@ -23,6 +24,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		ED041D011832BF4E007D2CEC /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		ED3620ED17E27CE9003277EB /* bg_nav.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = bg_nav.png; path = ../../../../Desktop/bg_nav.png; sourceTree = "<group>"; };
 		ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = acontece_no_porto.gif; sourceTree = "<group>"; };
 		ED8DD83317EA2B0800864BFA /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
@@ -47,6 +49,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ED041D021832BF4E007D2CEC /* QuartzCore.framework in Frameworks */,
 				ED8DD83417EA2B0800864BFA /* CoreText.framework in Frameworks */,
 				EDBFFDD517E926A800C393D5 /* libxml2.2.dylib in Frameworks */,
 				EDD1A9F717E7C27B00AA26CF /* Security.framework in Frameworks */,
@@ -82,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				ED8DD83317EA2B0800864BFA /* CoreText.framework */,
+				ED041D011832BF4E007D2CEC /* QuartzCore.framework */,
 				EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */,
 				EDD1A9F617E7C27B00AA26CF /* Security.framework */,
 				EDB4080417E25F7500521640 /* UIKit.framework */,

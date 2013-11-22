@@ -189,6 +189,38 @@ static void DrawFramesetter(CGContextRef context, CTFramesetterRef framesetter, 
 
 /* }}} */
 
+/* Random Stuff Generation {{{ */
+
+// This is pretty much the only helper not written by myself (god, i don't intend to use this in production)
+// Taken from https://gist.github.com/kylefox/1689973; MIT Licensed
+__attribute__((unused))
+static UIColor *RandomColor() {
+	CGFloat hue = ( arc4random() % 256 / 256.0 );  //  0.0 to 1.0
+	CGFloat saturation = ( arc4random() % 128 / 256.0 ) + 0.5;  //  0.5 to 1.0, away from white
+	CGFloat brightness = ( arc4random() % 128 / 256.0 ) + 0.5;  //  0.5 to 1.0, away from black
+	return [UIColor colorWithHue:hue saturation:saturation brightness:brightness alpha:1];
+}
+
+__attribute__((unused))
+static uint32_t RandomColorHex() {
+	return (arc4random()*0xFFFFFF<<0);
+}
+
+void RandomCString(char *s, const int len) {
+	static const char alphanum[] =
+		"0123456789"
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		"abcdefghijklmnopqrstuvwxyz";
+
+	for (int i = 0; i < len; ++i) {
+		s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
+	}
+
+	s[len] = 0;
+}
+
+/* }}} */
+
 /* }}} */
 
 /* Constants {{{ */
@@ -309,24 +341,44 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 #define deg2rad(deg) (deg * (M_PI/180.f))
 #define rad2deg(rad) (rad * (180.f/M_PI))
 
-typedef struct _PieChartPiece {
-	int percentage;
-	uint32_t color;
-	NSString *text;
-} PieChartPiece;
+@interface PieChartPiece : NSObject
+@property(nonatomic, assign) NSInteger percentage;
+@property(nonatomic, assign) uint32_t color;
+@property(nonatomic, retain) NSString *text;
+@property(nonatomic, retain) CALayer *layer;
+@end
+
+@protocol PieChartSliderViewDelegate;
+@interface PieChartSliderViewSlider : UISlider @end
+@interface PieChartSliderView : UIView {
+	PieChartPiece *$piece;
+}
+
+@property(nonatomic, assign) id<PieChartSliderViewDelegate> delegate;
+
+- (PieChartPiece *)piece;
+- (id)initWithFrame:(CGRect)frame piece:(PieChartPiece *)piece;
+@end
+
+@protocol PieChartSliderViewDelegate <NSObject>
+@optional
+- (void)pieChartSliderView:(PieChartSliderView *)sliderView didSlideWithValue:(float)value;
+@end
 
 @protocol PieChartViewDelegate;
-
-@interface PieChartView : UIView
+@interface PieChartView : UIView <PieChartSliderViewDelegate> {
+	PieChartPiece *$emptyPiece;
+	NSArray *$pieces;
+}
 @property(nonatomic, assign) id<PieChartViewDelegate> delegate;
 
-- (id)initWithFrame:(CGRect)frame pieces:(PieChartPiece *)pieces count:(NSUInteger)count inset:(CGFloat)inset fillEmpty:(BOOL)fill;
+- (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count inset:(CGFloat)inset emptyPiece:(PieChartPiece *)empty;
 @end
 
 @protocol PieChartViewDelegate <NSObject>
 @required
 @optional
-- (void)pieChartView:(PieChartView *)view didSelectPiece:(PieChartPiece)piece;
+- (void)pieChartView:(PieChartView *)view didSelectPiece:(PieChartPiece *)piece;
 @end
 
 /* }}} */
@@ -749,44 +801,142 @@ typedef struct _PieChartPiece {
 
 /* Pie Chart View {{{ */
 
+@implementation PieChartPiece
+@synthesize percentage, color, text, layer;
+
+- (void)dealloc {
+	[text release];
+	[layer release];
+	[super dealloc];
+}
+@end
+
+@implementation PieChartSliderViewSlider
+- (CGRect)trackRectForBounds:(CGRect)bounds {
+	return CGRectMake(bounds.origin.x + 5.f, bounds.origin.y + 4.f, bounds.size.width - 10.f, 7.f);
+}
+
+- (CGRect)thumbRectForBounds:(CGRect)bounds trackRect:(CGRect)rect value:(float)value {
+	CGRect superRect = [super thumbRectForBounds:bounds trackRect:rect value:value];
+	return CGRectMake(superRect.origin.x, bounds.origin.y + 2.f, 6.f, 6.f);
+}
+@end
+
+@implementation PieChartSliderView
+- (id)initWithFrame:(CGRect)frame piece:(PieChartPiece *)piece {
+	if ((self = [super initWithFrame:frame])) {
+		$piece = [piece retain];
+		
+		UIColor *color = UIColorFromHexWithAlpha([piece color], 1.f);
+		// FIXME: Frame constants!
+		PieChartSliderViewSlider *slider = [[PieChartSliderViewSlider alloc] initWithFrame:CGRectMake(0.f, 25.f, [self bounds].size.width, 15.f)];
+		[slider setMinimumTrackTintColor:color];
+		[slider setMaximumTrackTintColor:color];
+		[slider setContinuous:NO];
+		[self addSubview:slider];
+		[slider release];
+	}
+
+	return self;
+}
+
+- (PieChartPiece *)piece {
+	return $piece;
+}
+
+- (void)drawRect:(CGRect)rect {
+	
+}
+
+- (void)dealloc {
+	[$piece release];
+	[super dealloc];
+}
+@end
 
 @implementation PieChartView
-- (id)initWithFrame:(CGRect)frame pieces:(PieChartPiece *)pieces count:(NSUInteger)count inset:(CGFloat)inset fillEmpty:(BOOL)fill {
+- (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count inset:(CGFloat)inset emptyPiece:(PieChartPiece *)empty {
 	if ((self = [super initWithFrame:frame])) {
+		$pieces = [pieces retain];
+		$emptyPiece = [empty retain];
+		
 		NSLog(@"INITIALIZING VIEW");
 		CGFloat totalAngle = 0.f;
 		
-		for (int i=0; i<count; i++) {
-			PieChartPiece piece = pieces[i];
-			CGFloat angle = deg2rad(-(piece.percentage * 360.f / 100.f));
+		for (PieChartPiece *piece in pieces) {
+			CGFloat angle = deg2rad(-([piece percentage] * 360.f / 100.f));
 			totalAngle += angle;
 		}
 		
-		CGPoint center = [self center];
-		CGFloat radius = [self bounds].size.width/2 - inset;
+		CGFloat radius = [self bounds].size.height/2 - inset;
+		CGPoint center = CGPointMake([self bounds].size.height/2, [self bounds].size.height/2);
 		
 		CGFloat startAngle = totalAngle/2;
-		for (int i=0; i<count; i++) {
-			PieChartPiece piece = pieces[i];
-			CGFloat deg = piece.percentage * 360.f / 100.f;
-			NSLog(@"startAngle deg: %f", rad2deg(startAngle));
-			NSLog(@"deg: %f", deg);
+		int percentageSum = 0;
+		
+		CGFloat pieChartSliderOrigin = 0.f;
+		for (PieChartPiece *piece in pieces) {			
+			CGFloat deg = [piece percentage] * 360.f / 100.f; // TODO: Make this radians already?
+			
+			CGMutablePathRef path = CGPathCreateMutable();
+			CGPathMoveToPoint(path, NULL, center.x, center.y);
+			CGPathAddArc(path, NULL, center.x, center.y, radius, startAngle, startAngle + deg2rad(deg), false);
+			startAngle += deg2rad(deg);
+
+			CAShapeLayer *layer = [[CAShapeLayer alloc] init];
+			[layer setPath:path];
+			[layer setFillColor:[UIColorFromHexWithAlpha(piece.color, 1.f) CGColor]];
+			[[self layer] addSublayer:layer];
+			[piece setLayer:layer];
+			[layer release];
+
+			CGPathRelease(path);
+			percentageSum += [piece percentage];
+
+			PieChartSliderView *sliderView = [[PieChartSliderView alloc] initWithFrame:CGRectMake(inset*2 + radius*2 + 5.f, pieChartSliderOrigin, [self bounds].size.width - (inset*2 + radius*2 + 5.f), 40.f) piece:piece];
+			pieChartSliderOrigin += 40.f;
+			[sliderView setDelegate:self];
+			[self addSubview:sliderView];
+			[sliderView release];
+		}
+		
+		if ($emptyPiece != nil) {
+			[$emptyPiece setPercentage:100 - percentageSum];
+			CGFloat deg = [empty percentage] * 360.f / 100.f;
 			
 			CGMutablePathRef path = CGPathCreateMutable();
 			CGPathMoveToPoint(path, NULL, center.x, center.y);
 			CGPathAddArc(path, NULL, center.x, center.y, radius, startAngle, startAngle + deg2rad(deg), false);
 			startAngle += deg2rad(deg);
 			
-			CAShapeLayer *layer = [CAShapeLayer layer];
+			CAShapeLayer *layer = [[CAShapeLayer alloc] init];
 			[layer setPath:path];
-			[layer setFillColor:[UIColorFromHexWithAlpha(piece.color, 1.f) CGColor]];
+			[layer setFillColor:[UIColorFromHexWithAlpha([empty color], 1.f) CGColor]];
 			[[self layer] addSublayer:layer];
+			[empty setLayer:layer];
+			[layer release];
 
 			CGPathRelease(path);
 		}
 	}
 
 	return self;
+}
+
+- (void)pieChartSliderView:(PieChartSliderView *)sliderView didSlideWithValue:(float)value {
+	CAShapeLayer *changingLayer = (CAShapeLayer *)[[sliderView piece] layer];
+	
+	CGFloat deg = value * 360.f;
+	// redraw (animate?)
+
+	// do shit with $emptyPiece->layer_
+}
+
+- (void)dealloc {
+	[$emptyPiece release];
+	[$pieces release];
+
+	[super dealloc];
 }
 @end
 
@@ -2627,13 +2777,24 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 		[tableView setTableHeaderView:tableHeaderView];
 		[tableHeaderView release];
 		
-		UIView *footerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 60.f)];
+		UIView *footerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 120.f)];
 		
-		PieChartPiece *pieces = (PieChartPiece *)calloc(2, sizeof(PieChartPiece));
-		pieces[0] = (PieChartPiece){ 25, 0x0, @"bozo" };
-		pieces[1] = (PieChartPiece){ 12, 0xff0000, @"yay" };
+		NSMutableArray *pieces = [NSMutableArray array];
+		for (GradeContainer *subContainer in [$container subGradeContainers]) {
+			PieChartPiece *piece = [[[PieChartPiece alloc] init] autorelease];
+			[piece setPercentage:[subContainer gradeInSupercontainer]*10];
+			[piece setColor:RandomColorHex()];
+			[piece setText:[subContainer name]];
 
-		PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, 60.f, 60.f) pieces:pieces count:2 inset:10.f fillEmpty:NO];
+			[pieces addObject:piece];
+		}
+		
+		PieChartPiece *emptyPiece = [[[PieChartPiece alloc] init] autorelease];
+		[emptyPiece setPercentage:0];
+		[emptyPiece setColor:0x0000ff];
+		[emptyPiece setText:@"Empty"];
+		
+		PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, [footerView bounds].size.width, 120.f) pieces:pieces count:[[$container subGradeContainers] count] inset:5.f emptyPiece:emptyPiece];
 		[mainPieChart setDelegate:self];
 		[footerView addSubview:mainPieChart];
 		[mainPieChart release];

@@ -11,6 +11,10 @@
 		ED3620EE17E27CE9003277EB /* bg_nav.png in Resources */ = {isa = PBXBuildFile; fileRef = ED3620ED17E27CE9003277EB /* bg_nav.png */; };
 		ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */ = {isa = PBXBuildFile; fileRef = ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */; };
 		ED8DD83417EA2B0800864BFA /* CoreText.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED8DD83317EA2B0800864BFA /* CoreText.framework */; };
+		EDA366B0184542D6005FC764 /* UISliderHandle.png in Resources */ = {isa = PBXBuildFile; fileRef = EDA366AC184542D6005FC764 /* UISliderHandle.png */; };
+		EDA366B1184542D6005FC764 /* UISliderHandle@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = EDA366AD184542D6005FC764 /* UISliderHandle@2x.png */; };
+		EDA366B2184542D6005FC764 /* UISliderHandleDown.png in Resources */ = {isa = PBXBuildFile; fileRef = EDA366AE184542D6005FC764 /* UISliderHandleDown.png */; };
+		EDA366B3184542D6005FC764 /* UISliderHandleDown@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = EDA366AF184542D6005FC764 /* UISliderHandleDown@2x.png */; };
 		EDB4080517E25F7500521640 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080417E25F7500521640 /* UIKit.framework */; };
 		EDB4080717E25F7500521640 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080617E25F7500521640 /* Foundation.framework */; };
 		EDB4080917E25F7500521640 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080817E25F7500521640 /* CoreGraphics.framework */; };
@@ -28,6 +32,10 @@
 		ED3620ED17E27CE9003277EB /* bg_nav.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = bg_nav.png; path = ../../../../Desktop/bg_nav.png; sourceTree = "<group>"; };
 		ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = acontece_no_porto.gif; sourceTree = "<group>"; };
 		ED8DD83317EA2B0800864BFA /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
+		EDA366AC184542D6005FC764 /* UISliderHandle.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = UISliderHandle.png; sourceTree = "<group>"; };
+		EDA366AD184542D6005FC764 /* UISliderHandle@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "UISliderHandle@2x.png"; sourceTree = "<group>"; };
+		EDA366AE184542D6005FC764 /* UISliderHandleDown.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = UISliderHandleDown.png; sourceTree = "<group>"; };
+		EDA366AF184542D6005FC764 /* UISliderHandleDown@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "UISliderHandleDown@2x.png"; sourceTree = "<group>"; };
 		EDB4080117E25F7500521640 /* PortoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PortoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EDB4080417E25F7500521640 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		EDB4080617E25F7500521640 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -62,6 +70,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		ED0BF00518440C7200FFA469 /* UISlider */ = {
+			isa = PBXGroup;
+			children = (
+				EDA366AC184542D6005FC764 /* UISliderHandle.png */,
+				EDA366AD184542D6005FC764 /* UISliderHandle@2x.png */,
+				EDA366AE184542D6005FC764 /* UISliderHandleDown.png */,
+				EDA366AF184542D6005FC764 /* UISliderHandleDown@2x.png */,
+			);
+			name = UISlider;
+			sourceTree = "<group>";
+		};
 		EDB407F817E25F7500521640 = {
 			isa = PBXGroup;
 			children = (
@@ -106,6 +125,7 @@
 		EDB4080B17E25F7500521640 /* Supporting Files */ = {
 			isa = PBXGroup;
 			children = (
+				ED0BF00518440C7200FFA469 /* UISlider */,
 				EDB4080C17E25F7500521640 /* PortoApp-Info.plist */,
 				EDB4080D17E25F7500521640 /* InfoPlist.strings */,
 				EDB4081217E25F7500521640 /* PortoApp-Prefix.pch */,
@@ -176,6 +196,10 @@
 				EDB4081B17E25F7500521640 /* Default-568h@2x.png in Resources */,
 				ED3620EE17E27CE9003277EB /* bg_nav.png in Resources */,
 				ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */,
+				EDA366B0184542D6005FC764 /* UISliderHandle.png in Resources */,
+				EDA366B1184542D6005FC764 /* UISliderHandle@2x.png in Resources */,
+				EDA366B2184542D6005FC764 /* UISliderHandleDown.png in Resources */,
+				EDA366B3184542D6005FC764 /* UISliderHandleDown@2x.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -139,7 +139,7 @@ static inline void Cache(NSString *key, id object) { [cache setObject:object for
 ./2013-09-01.txt:[16:37:47] <@DHowett> fucking coretext
 */
 
-static CFAttributedStringRef CreateBaseAttributedString(CTFontRef font, CGColorRef textColor, CFStringRef string, BOOL underlined, CTLineBreakMode lineBreakMode = kCTLineBreakByWordWrapping, CTTextAlignment alignment = kCTLeftTextAlignment)  {
+static CFAttributedStringRef CreateBaseAttributedString(CTFontRef font, CGColorRef textColor, CFStringRef string, BOOL underlined = NO, CTLineBreakMode lineBreakMode = kCTLineBreakByWordWrapping, CTTextAlignment alignment = kCTLeftTextAlignment)  {
 	if (string == NULL) string = (CFStringRef)@"";
 	
 	CGFloat spacing = 0.f;
@@ -217,6 +217,20 @@ void RandomCString(char *s, const int len) {
 	}
 
 	s[len] = 0;
+}
+
+/* }}} */
+
+/* Image Resizing {{{ */
+
+// From StackOverflow. Dude, how this answer has saved my ass so many times.
+static UIImage *UIImageResize(UIImage *image, CGSize newSize) {
+	UIGraphicsBeginImageContextWithOptions(newSize, NO, 0.0);
+	[image drawInRect:CGRectMake(0, 0, newSize.width, newSize.height)];
+	UIImage *newImage = UIGraphicsGetImageFromCurrentImageContext();    
+	UIGraphicsEndImageContext();
+	
+	return newImage;
 }
 
 /* }}} */
@@ -338,20 +352,29 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Pie Chart View {{{ */
 
+@class GradeContainer;
+
 #define deg2rad(deg) (deg * (M_PI/180.f))
 #define rad2deg(rad) (rad * (180.f/M_PI))
 
 @interface PieChartPiece : NSObject
 @property(nonatomic, assign) NSInteger percentage;
+@property(nonatomic, retain) GradeContainer *container;
 @property(nonatomic, assign) uint32_t color;
 @property(nonatomic, retain) NSString *text;
 @property(nonatomic, retain) CALayer *layer;
 @end
 
-@protocol PieChartSliderViewDelegate;
+// TODO: Better implementation.
+// God, please tell me I am a bad programmer and that there is a better way to do this
+// Why did you implement UISlider like this, Apple? Why do size changes need to be image-based
+// instead of being built-in? Why, Apple, why?!
 @interface PieChartSliderViewSlider : UISlider @end
+
+@protocol PieChartSliderViewDelegate;
 @interface PieChartSliderView : UIView {
 	PieChartPiece *$piece;
+	PieChartSliderViewSlider *$slider;
 }
 
 @property(nonatomic, assign) id<PieChartSliderViewDelegate> delegate;
@@ -369,6 +392,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface PieChartView : UIView <PieChartSliderViewDelegate> {
 	PieChartPiece *$emptyPiece;
 	NSArray *$pieces;
+	CGFloat $inset;
 }
 @property(nonatomic, assign) id<PieChartViewDelegate> delegate;
 
@@ -802,42 +826,70 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* Pie Chart View {{{ */
 
 @implementation PieChartPiece
-@synthesize percentage, color, text, layer;
+@synthesize percentage, container, color, text, layer;
 
 - (void)dealloc {
+	[container release];
 	[text release];
 	[layer release];
 	[super dealloc];
 }
 @end
 
+// For some reason, changing the track rect gets you some weird, unpleasant effect on non-retina devices.
 @implementation PieChartSliderViewSlider
 - (CGRect)trackRectForBounds:(CGRect)bounds {
-	return CGRectMake(bounds.origin.x + 5.f, bounds.origin.y + 4.f, bounds.size.width - 10.f, 7.f);
+	return CGRectMake(bounds.origin.x + 5.f, 2.5f, bounds.size.width - 10.f, 9.f);
 }
 
 - (CGRect)thumbRectForBounds:(CGRect)bounds trackRect:(CGRect)rect value:(float)value {
 	CGRect superRect = [super thumbRectForBounds:bounds trackRect:rect value:value];
-	return CGRectMake(superRect.origin.x, bounds.origin.y + 2.f, 6.f, 6.f);
+	return CGRectMake(superRect.origin.x, 0.f, 15.f, 15.f);
 }
 @end
 
+#define PieChartSliderView_DiffWidth 55.f
 @implementation PieChartSliderView
+@synthesize delegate;
+
 - (id)initWithFrame:(CGRect)frame piece:(PieChartPiece *)piece {
 	if ((self = [super initWithFrame:frame])) {
 		$piece = [piece retain];
 		
-		UIColor *color = UIColorFromHexWithAlpha([piece color], 1.f);
+		// thanks to https://github.com/0xced/iOS-Artwork-Extractor
+		UIImage *knobImage = UIImageResize([UIImage imageNamed:@"UISliderHandle.png"], CGSizeMake(15.f, 15.f));
+		UIImage *knobPressedImage = UIImageResize([UIImage imageNamed:@"UISliderHandleDown.png"], CGSizeMake(15.f, 15.f));
+
 		// FIXME: Frame constants!
-		PieChartSliderViewSlider *slider = [[PieChartSliderViewSlider alloc] initWithFrame:CGRectMake(0.f, 25.f, [self bounds].size.width, 15.f)];
-		[slider setMinimumTrackTintColor:color];
-		[slider setMaximumTrackTintColor:color];
-		[slider setContinuous:NO];
-		[self addSubview:slider];
-		[slider release];
+		UIColor *color = UIColorFromHexWithAlpha([piece color], 1.f);
+		$slider = [[PieChartSliderViewSlider alloc] initWithFrame:CGRectMake(0.f, 20.f, [self bounds].size.width - PieChartSliderView_DiffWidth, 15.f)];
+		[$slider setThumbImage:knobImage forState:UIControlStateNormal];
+		[$slider setThumbImage:knobPressedImage forState:UIControlStateHighlighted];
+		[$slider setMinimumTrackTintColor:color];
+		
+		[$slider setValue:[[[$piece container] grade] floatValue]/10.f]; // fuck.
+		[$slider addTarget:self action:@selector(sliderDidSlide:) forControlEvents:UIControlEventValueChanged];
+		
+		[self addSubview:$slider];
 	}
 
 	return self;
+}
+
+- (void)sliderDidSlide:(UISlider *)slider {
+	[self setNeedsDisplay];
+	[[self delegate] pieChartSliderView:self didSlideWithValue:[slider value]];
+}
+
+- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
+	[super touchesEnded:touches withEvent:event];
+
+	UITouch *touch = [touches anyObject];
+	CGPoint location = [touch locationInView:self];
+	if (CGRectContainsPoint(CGRectMake([self bounds].size.width - PieChartSliderView_DiffWidth, 0.f, PieChartSliderView_DiffWidth, [self bounds].size.height), location)) {
+		[$slider setValue:[[[$piece container] grade] floatValue]/10.f animated:YES];
+		[self setNeedsDisplay];
+	}
 }
 
 - (PieChartPiece *)piece {
@@ -845,11 +897,42 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)drawRect:(CGRect)rect {
+	CGContextRef context = UIGraphicsGetCurrentContext();
+	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
+	CGContextTranslateCTM(context, 0, self.bounds.size.height);
+	CGContextScaleCTM(context, 1.0, -1.0);
 	
+	[[UIColor whiteColor] setFill];
+	CGContextFillRect(context, rect);
+	
+	[UIColorFromHexWithAlpha(0xd8d8d8, 1.f) setFill];
+	CGContextFillRect(context, CGRectMake(0.f, 0.f, rect.size.width, 1.f));
+	
+	CGColorRef textColor = [[UIColor blackColor] CGColor];
+	NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
+	CTFontRef dataFont = CTFontCreateWithName((CFStringRef)systemFont, pxtopt(rect.size.height/2), NULL);
+	CTFontRef boldFont = CTFontCreateCopyWithSymbolicTraits(dataFont, pxtopt(rect.size.height/2), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
+	
+	CTFramesetterRef nameFramesetter = CreateFramesetter(dataFont, textColor, (CFStringRef)[$piece text], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	DrawFramesetter(context, nameFramesetter, CGRectMake(0.f, 15.f, rect.size.width - PieChartSliderView_DiffWidth, 25.f));
+	CFRelease(nameFramesetter);
+	
+	CGFloat diff = -(([[[$piece container] grade] floatValue] - [$slider value]*10.f) * [[[$piece container] value] floatValue]/10.f);
+	CTFramesetterRef changeFramesetter = CreateFramesetter(dataFont, textColor, (CFStringRef)[NSString stringWithFormat:@"%s%.2f", diff>=0?"+":"", diff], NO, kCTLineBreakByTruncatingTail, kCTRightTextAlignment);
+	DrawFramesetter(context, changeFramesetter, CGRectMake(rect.size.width - PieChartSliderView_DiffWidth + 5.f, 0.f, PieChartSliderView_DiffWidth - 10.f, rect.size.height/2));
+	CFRelease(changeFramesetter);
+	
+	CTFramesetterRef gradeFramesetter = CreateFramesetter(boldFont, textColor, (CFStringRef)[NSString stringWithFormat:@"%.2f", [$slider value]*10], NO, kCTLineBreakByTruncatingTail, kCTRightTextAlignment);
+	DrawFramesetter(context, gradeFramesetter, CGRectMake(rect.size.width - PieChartSliderView_DiffWidth + 5.f, rect.size.height/2, PieChartSliderView_DiffWidth - 10.f, rect.size.height/2));
+	CFRelease(gradeFramesetter);
+	
+	CFRelease(dataFont);
+	CFRelease(boldFont);
 }
 
 - (void)dealloc {
 	[$piece release];
+	[$slider release];
 	[super dealloc];
 }
 @end
@@ -859,6 +942,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	if ((self = [super initWithFrame:frame])) {
 		$pieces = [pieces retain];
 		$emptyPiece = [empty retain];
+		$inset = inset;
 		
 		NSLog(@"INITIALIZING VIEW");
 		CGFloat totalAngle = 0.f;
@@ -924,12 +1008,44 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)pieChartSliderView:(PieChartSliderView *)sliderView didSlideWithValue:(float)value {
-	CAShapeLayer *changingLayer = (CAShapeLayer *)[[sliderView piece] layer];
+	[[sliderView piece] setPercentage:value * 100.f];
 	
-	CGFloat deg = value * 360.f;
-	// redraw (animate?)
+	CGFloat totalAngle = 0.f;
+	for (PieChartPiece *piece in $pieces) {
+		CGFloat angle = deg2rad(-([piece percentage] * 360.f / 100.f));
+		totalAngle += angle;
+	}
+	
+	CGFloat radius = [self bounds].size.height/2 - $inset;
+	CGPoint center = CGPointMake([self bounds].size.height/2, [self bounds].size.height/2);
+	
+	CGFloat startAngle = totalAngle/2;
+	int percentageSum = 0;
 
-	// do shit with $emptyPiece->layer_
+	for (PieChartPiece *piece in $pieces) {
+		CGFloat deg = [piece percentage] * 360.f / 100.f;
+
+		CGMutablePathRef path = CGPathCreateMutable();
+		CGPathMoveToPoint(path, NULL, center.x, center.y);
+		CGPathAddArc(path, NULL, center.x, center.y, radius, startAngle, startAngle + deg2rad(deg), false);
+		startAngle += deg2rad(deg);
+
+		CAShapeLayer *layer = (CAShapeLayer *)[piece layer];
+		// animate?
+		[layer setPath:path];
+		CGPathRelease(path);
+
+		percentageSum += [piece percentage];
+	}
+
+	[$emptyPiece setPercentage:100 - percentageSum];
+	CGFloat deg = [$emptyPiece percentage] * 360.f / 100.f;
+
+	CGMutablePathRef path = CGPathCreateMutable();
+	CGPathMoveToPoint(path, NULL, center.x, center.y);
+	CGPathAddArc(path, NULL, center.x, center.y, radius, startAngle, startAngle + deg2rad(deg), false);
+	[[$emptyPiece layer] setPath:path];
+	CGPathRelease(path);
 }
 
 - (void)dealloc {
@@ -2617,10 +2733,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @implementation TestView
 @synthesize container;
 
-static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
+static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 	UIColor *color;
 	
-	float grade = [grade_ floatValue];
 	if (grade < 6) color = graded ? UIColorFromHexWithAlpha(0xFF3300, 1.f) : UIColorFromHexWithAlpha(0xC75F5F, 1.f);
 	else if (grade < 8) color = graded ? UIColorFromHexWithAlpha(0xFFCC00, 1.f) : UIColorFromHexWithAlpha(0xC7A15F, 1.f);
 	else color = graded ? UIColorFromHexWithAlpha(0x33CC33, 1.f) : UIColorFromHexWithAlpha(0x5FA4C7, 1.f);
@@ -2647,7 +2762,7 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 	CGFloat zoneWidth = rect.size.width/3;
 	
 	// ZONE 1
-	[ColorForGrade([container grade]) setFill];
+	[ColorForGrade([container $gradePercentage]/10.f) setFill];
 	CGRect circleRect = CGRectMake(8.f, zoneHeight/2, zoneHeight, zoneHeight);
 	CGContextFillEllipseInRect(context, circleRect);
 	
@@ -2694,9 +2809,9 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 	CGFloat gradeBarWidth = [[container grade] floatValue] / [[container value] floatValue] * baseGraphWidth;
 	CGFloat averageBarWidth = [[container average] floatValue] / [[container value] floatValue] * baseGraphWidth;
 
-	[ColorForGrade([container average], NO) setFill];
+	[ColorForGrade([[container average] floatValue], NO) setFill];
 	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 2.f}, {averageBarWidth, baseGraphRect.size.height}});
-	[ColorForGrade([container grade]) setFill];
+	[ColorForGrade([[container grade] floatValue]) setFill];
 	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 6.f + baseGraphRect.size.height}, {gradeBarWidth, baseGraphRect.size.height}});
 	
 	CTFontRef smallerFont = CTFontCreateCopyWithSymbolicTraits(dataFont, pxtopt(baseGraphRect.size.height), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
@@ -2783,6 +2898,7 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 		for (GradeContainer *subContainer in [$container subGradeContainers]) {
 			PieChartPiece *piece = [[[PieChartPiece alloc] init] autorelease];
 			[piece setPercentage:[subContainer gradeInSupercontainer]*10];
+			[piece setContainer:subContainer];
 			[piece setColor:RandomColorHex()];
 			[piece setText:[subContainer name]];
 
@@ -2910,6 +3026,14 @@ static UIColor *ColorForGrade(NSString *grade_, BOOL graded = YES) {
 	NSURLResponse *response;
 	NSError *error;
 	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:&error];
+
+	// i used this because 3rd period of 2013 was going to be concluded
+	// so i still needed to test this on an incomplete period.
+	// so i saved this html file. i know it's a horrible test with few cases, but i'll be creative etc.
+	//#define SAVE_GRADE_HTML
+	#ifdef SAVE_GRADE_HTML
+	[data writeToFile:@"/Users/BobNelson/Documents/Projects/PortoApp/datak.html" atomically:NO];
+	#endif
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 	XMLElement *divGeral = [document firstElementMatchingPath:@"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']"];

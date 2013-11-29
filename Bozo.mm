@@ -609,6 +609,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)calculateAverageFromSubgrades;
 - (NSInteger)indexAtSupercontainer;
 - (float)gradeInSupercontainer;
+- (float)$gradePercentage;
 
 @property(nonatomic, assign) NSInteger debugLevel;
 @end
@@ -888,6 +889,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CGPoint location = [touch locationInView:self];
 	if (CGRectContainsPoint(CGRectMake([self bounds].size.width - PieChartSliderView_DiffWidth, 0.f, PieChartSliderView_DiffWidth, [self bounds].size.height), location)) {
 		[$slider setValue:[[[$piece container] grade] floatValue]/10.f animated:YES];
+		[self sliderDidSlide:$slider];
 		[self setNeedsDisplay];
 	}
 }
@@ -948,7 +950,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		CGFloat totalAngle = 0.f;
 		
 		for (PieChartPiece *piece in pieces) {
-			CGFloat angle = deg2rad(-([piece percentage] * 360.f / 100.f));
+			CGFloat angle = deg2rad(-([piece percentage] * 360 / 100));
 			totalAngle += angle;
 		}
 		
@@ -960,7 +962,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		
 		CGFloat pieChartSliderOrigin = 0.f;
 		for (PieChartPiece *piece in pieces) {			
-			CGFloat deg = [piece percentage] * 360.f / 100.f; // TODO: Make this radians already?
+			CGFloat deg = [piece percentage] * 360 / 100; // TODO: Make this radians already?
 			
 			CGMutablePathRef path = CGPathCreateMutable();
 			CGPathMoveToPoint(path, NULL, center.x, center.y);
@@ -986,7 +988,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		
 		if ($emptyPiece != nil) {
 			[$emptyPiece setPercentage:100 - percentageSum];
-			CGFloat deg = [empty percentage] * 360.f / 100.f;
+			CGFloat deg = [empty percentage] * 360 / 100;
 			
 			CGMutablePathRef path = CGPathCreateMutable();
 			CGPathMoveToPoint(path, NULL, center.x, center.y);
@@ -1008,11 +1010,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)pieChartSliderView:(PieChartSliderView *)sliderView didSlideWithValue:(float)value {
-	[[sliderView piece] setPercentage:value * 100.f];
-	
+	PieChartPiece *sliderPiece = [sliderView piece];
+	[sliderPiece setPercentage:value * [[[sliderPiece container] value] intValue] * [[sliderPiece container] weight] / [[[sliderPiece container] superContainer] totalWeight] * 10];
+
 	CGFloat totalAngle = 0.f;
 	for (PieChartPiece *piece in $pieces) {
-		CGFloat angle = deg2rad(-([piece percentage] * 360.f / 100.f));
+		CGFloat angle = deg2rad(-([piece percentage] * 360 / 100));
 		totalAngle += angle;
 	}
 	
@@ -1023,7 +1026,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	int percentageSum = 0;
 
 	for (PieChartPiece *piece in $pieces) {
-		CGFloat deg = [piece percentage] * 360.f / 100.f;
+		CGFloat deg = [piece percentage] * 360 / 100;
 
 		CGMutablePathRef path = CGPathCreateMutable();
 		CGPathMoveToPoint(path, NULL, center.x, center.y);

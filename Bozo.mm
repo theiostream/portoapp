@@ -14,7 +14,8 @@ Personal thanks:
 - Dustin Howett
 - Guilherme (Lima) Stark
 - Max Shavrick
- 
+- Natham Coracini 
+
 Project Thanks:
 - HNKit (session design inspiration)
 - MobileCydia.mm (goes without saying)

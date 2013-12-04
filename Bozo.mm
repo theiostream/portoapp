@@ -269,6 +269,8 @@ static UIImage *UIImageResize(UIImage *image, CGSize newSize) {
 #define pxtopt(px) ( px * 72 / 96 )
 #define pttopx(pt) ( pt * 96 / 72 )
 
+#define kTabBarHeight 49.f
+
 /* }}} */
 
 /* Categories {{{ */
@@ -295,11 +297,17 @@ static UIImage *UIImageResize(UIImage *image, CGSize newSize) {
 
 @interface NSString (AmericanFloat)
 - (NSString *)americanFloat;
+- (BOOL)isGrade;
 @end
 
 @implementation NSString (AmericanFloat)
 - (NSString *)americanFloat {
 	return [self stringByReplacingOccurrencesOfString:@"," withString:@"."];
+}
+
+- (BOOL)isGrade {
+	NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"\\d+[\\.,]\\d+" options:0 error:NULL];
+	return [regex numberOfMatchesInString:self options:0 range:NSMakeRange(0, [self length])] > 0;
 }
 @end
 
@@ -359,7 +367,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 #define rad2deg(rad) (rad * (180.f/M_PI))
 
 @interface PieChartPiece : NSObject
-@property(nonatomic, assign) NSInteger percentage;
+@property(nonatomic, assign) CGFloat percentage;
 @property(nonatomic, retain) GradeContainer *container;
 @property(nonatomic, assign) uint32_t color;
 @property(nonatomic, retain) NSString *text;
@@ -393,11 +401,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface PieChartView : UIView <PieChartSliderViewDelegate> {
 	PieChartPiece *$emptyPiece;
 	NSArray *$pieces;
-	CGFloat $inset;
+	CGFloat $radius;
 }
 @property(nonatomic, assign) id<PieChartViewDelegate> delegate;
 
-- (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count inset:(CGFloat)inset emptyPiece:(PieChartPiece *)empty;
+- (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count radius:(CGFloat)radius emptyPiece:(PieChartPiece *)empty;
 @end
 
 @protocol PieChartViewDelegate <NSObject>
@@ -598,6 +606,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @property(nonatomic, assign) NSInteger weight;
 
 @property(nonatomic, retain) NSArray *subGradeContainers;
+@property(nonatomic, retain) NSArray *subBonusContainers;
 @property(nonatomic, retain) GradeContainer *superContainer;
 
 - (NSInteger)totalWeight;
@@ -859,6 +868,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		$piece = [piece retain];
 		
 		// thanks to https://github.com/0xced/iOS-Artwork-Extractor
+		// let's hope we don't get in trouble with apple for redisting these images.
 		UIImage *knobImage = UIImageResize([UIImage imageNamed:@"UISliderHandle.png"], CGSizeMake(15.f, 15.f));
 		UIImage *knobPressedImage = UIImageResize([UIImage imageNamed:@"UISliderHandleDown.png"], CGSizeMake(15.f, 15.f));
 
@@ -940,34 +950,34 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 @end
 
+#define kPieChartViewInset 5.f
 @implementation PieChartView
-- (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count inset:(CGFloat)inset emptyPiece:(PieChartPiece *)empty {
+- (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count radius:(CGFloat)radius emptyPiece:(PieChartPiece *)empty {
 	if ((self = [super initWithFrame:frame])) {
 		$pieces = [pieces retain];
 		$emptyPiece = [empty retain];
-		$inset = inset;
+		$radius = radius;
 		
 		NSLog(@"INITIALIZING VIEW");
 		CGFloat totalAngle = 0.f;
 		
 		for (PieChartPiece *piece in pieces) {
-			CGFloat angle = deg2rad(-([piece percentage] * 360 / 100));
+			CGFloat angle = deg2rad(-([piece percentage] * 360.f / 100.f));
 			totalAngle += angle;
 		}
 		
-		CGFloat radius = [self bounds].size.height/2 - inset;
-		CGPoint center = CGPointMake([self bounds].size.height/2, [self bounds].size.height/2);
+		CGPoint center = CGPointMake(($radius*2 + kPieChartViewInset*2)/2, ($radius*2 + kPieChartViewInset*2)/2);
 		
 		CGFloat startAngle = totalAngle/2;
-		int percentageSum = 0;
+		CGFloat percentageSum = 0;
 		
 		CGFloat pieChartSliderOrigin = 0.f;
 		for (PieChartPiece *piece in pieces) {			
-			CGFloat deg = [piece percentage] * 360 / 100; // TODO: Make this radians already?
+			CGFloat deg = [piece percentage] * 360.f / 100.f; // TODO: Make this radians already?
 			
 			CGMutablePathRef path = CGPathCreateMutable();
 			CGPathMoveToPoint(path, NULL, center.x, center.y);
-			CGPathAddArc(path, NULL, center.x, center.y, radius, startAngle, startAngle + deg2rad(deg), false);
+			CGPathAddArc(path, NULL, center.x, center.y, $radius, startAngle, startAngle + deg2rad(deg), false);
 			startAngle += deg2rad(deg);
 
 			CAShapeLayer *layer = [[CAShapeLayer alloc] init];
@@ -980,7 +990,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			CGPathRelease(path);
 			percentageSum += [piece percentage];
 
-			PieChartSliderView *sliderView = [[PieChartSliderView alloc] initWithFrame:CGRectMake(inset*2 + radius*2 + 5.f, pieChartSliderOrigin, [self bounds].size.width - (inset*2 + radius*2 + 5.f), 40.f) piece:piece];
+			PieChartSliderView *sliderView = [[PieChartSliderView alloc] initWithFrame:CGRectMake(kPieChartViewInset*3 + $radius*2, pieChartSliderOrigin, [self bounds].size.width - (kPieChartViewInset*3 + $radius*2), 40.f) piece:piece];
 			pieChartSliderOrigin += 40.f;
 			[sliderView setDelegate:self];
 			[self addSubview:sliderView];
@@ -988,8 +998,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		}
 		
 		if ($emptyPiece != nil) {
-			[$emptyPiece setPercentage:100 - percentageSum];
-			CGFloat deg = [empty percentage] * 360 / 100;
+			[$emptyPiece setPercentage:100.f - percentageSum];
+			CGFloat deg = [empty percentage] * 360.f / 100.f;
 			
 			CGMutablePathRef path = CGPathCreateMutable();
 			CGPathMoveToPoint(path, NULL, center.x, center.y);
@@ -1012,26 +1022,25 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)pieChartSliderView:(PieChartSliderView *)sliderView didSlideWithValue:(float)value {
 	PieChartPiece *sliderPiece = [sliderView piece];
-	[sliderPiece setPercentage:value * [[[sliderPiece container] value] intValue] * [[sliderPiece container] weight] / [[[sliderPiece container] superContainer] totalWeight] * 10];
+	[sliderPiece setPercentage:value * [[[sliderPiece container] value] floatValue] * [[sliderPiece container] weight] / [[[sliderPiece container] superContainer] totalWeight] * 10.f];
 
 	CGFloat totalAngle = 0.f;
 	for (PieChartPiece *piece in $pieces) {
-		CGFloat angle = deg2rad(-([piece percentage] * 360 / 100));
+		CGFloat angle = deg2rad(-([piece percentage] * 360.f / 100.f));
 		totalAngle += angle;
 	}
 	
-	CGFloat radius = [self bounds].size.height/2 - $inset;
-	CGPoint center = CGPointMake([self bounds].size.height/2, [self bounds].size.height/2);
+	CGPoint center = CGPointMake(($radius*2 + kPieChartViewInset*2)/2, ($radius*2 + kPieChartViewInset*2)/2);
 	
 	CGFloat startAngle = totalAngle/2;
-	int percentageSum = 0;
+	CGFloat percentageSum = 0;
 
 	for (PieChartPiece *piece in $pieces) {
-		CGFloat deg = [piece percentage] * 360 / 100;
+		CGFloat deg = [piece percentage] * 360.f / 100.f;
 
 		CGMutablePathRef path = CGPathCreateMutable();
 		CGPathMoveToPoint(path, NULL, center.x, center.y);
-		CGPathAddArc(path, NULL, center.x, center.y, radius, startAngle, startAngle + deg2rad(deg), false);
+		CGPathAddArc(path, NULL, center.x, center.y, $radius, startAngle, startAngle + deg2rad(deg), false);
 		startAngle += deg2rad(deg);
 
 		CAShapeLayer *layer = (CAShapeLayer *)[piece layer];
@@ -1042,13 +1051,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		percentageSum += [piece percentage];
 	}
 
-	[$emptyPiece setPercentage:100 - percentageSum];
+	[$emptyPiece setPercentage:100.f - percentageSum];
 	CGFloat deg = [$emptyPiece percentage] * 360.f / 100.f;
 
 	CGMutablePathRef path = CGPathCreateMutable();
 	CGPathMoveToPoint(path, NULL, center.x, center.y);
-	CGPathAddArc(path, NULL, center.x, center.y, radius, startAngle, startAngle + deg2rad(deg), false);
-	[[$emptyPiece layer] setPath:path];
+	CGPathAddArc(path, NULL, center.x, center.y, $radius, startAngle, startAngle + deg2rad(deg), false);
+	[(CAShapeLayer *)[$emptyPiece layer] setPath:path];
 	CGPathRelease(path);
 }
 
@@ -2536,7 +2545,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 // This is a node.
 // GradeContainer sounds better than GradeNode.
 @implementation GradeContainer
-@synthesize name, grade, value, average, subGradeContainers, weight, debugLevel, superContainer;
+@synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer;
 
 - (id)init {
 	if ((self = [super init])) {
@@ -2555,6 +2564,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (CGFloat)$gradePercentage {
+	if ([grade isEqualToString:@"$NoGrade"] || [value isEqualToString:@"$NoGrade"]) return 0.f;
 	return [grade floatValue]/[value floatValue]*100;
 }
 
@@ -2568,13 +2578,17 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)calculateGradeFromSubgrades {
 	NSInteger gradeSum = 0;
-	for (GradeContainer *container in [self subGradeContainers])
+	for (GradeContainer *container in [self subGradeContainers]) {
+		if ([[container grade] isEqualToString:@"$NoGrade"]) continue;
 		gradeSum += [[container grade] floatValue] * [container weight];
+	}
 	
 	[self setGrade:[NSString stringWithFormat:@"%.2f", (double)gradeSum / [self totalWeight]]];
 }
 
 - (float)gradeInSupercontainer {
+	if ([[self grade] isEqualToString:@"$NoGrade"]) return 0.f;
+
 	NSInteger superTotalWeight = [[self superContainer] totalWeight];
 	return [[self grade] floatValue] * [self weight] / superTotalWeight;
 }
@@ -2585,8 +2599,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)calculateAverageFromSubgrades {
 	NSInteger averageSum = 0;
-	for (GradeContainer *container in [self subGradeContainers])
+	for (GradeContainer *container in [self subGradeContainers]) {
+		if ([[container average] isEqualToString:@"$NoGrade"]) continue;
 		averageSum += [[container average] floatValue] * [container weight];
+	}
 	
 	[self setAverage:[NSString stringWithFormat:@"%.2f", (double)averageSum / [self totalWeight]]];
 }
@@ -2601,6 +2617,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[value release];
 	[average release];
 	[subGradeContainers release];
+	[subBonusContainers release];
 	[superContainer release];
 
 	[super dealloc];
@@ -2621,6 +2638,26 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 	return mutableString;
 }
+
+- (void)attemptToFixValues {
+	for (GradeContainer *container in [self subGradeContainers]) {
+		if ([[container value] isEqualToString:@"$NoGrade"]) {
+			int undefinedSiblings = 0;
+			float valueSum = 0.f;
+
+			for (GradeContainer *sibling in [[container superContainer] subGradeContainers]) {
+				if ([[sibling value] isEqualToString:@"$NoGrade"]) undefinedSiblings++;
+				else valueSum += [[sibling value] floatValue];
+			}
+			
+			if (undefinedSiblings == 1) {
+				[container setValue:[NSString stringWithFormat:@"%f", 10.f - valueSum]];
+			}
+		}
+
+		[container attemptToFixValues];
+	}
+}
 @end
 
 // FIXME: Review ranges on both classes.
@@ -2628,13 +2665,16 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
 	CGFloat zoneWidth2 = rect.size.width/4;
 	
-	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:[[self container] grade]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	NSString *gradeString__ = [[[self container] grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [[self container] grade];
+	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
 	CFAttributedStringRef weightString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Peso\n" stringByAppendingString:[NSString stringWithFormat:@"%d", [[self container] weight]]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange weightContentRange = CFRangeMake(5, CFAttributedStringGetLength(weightString_)-5);
-	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:[[self container] average]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	NSString *averageString__ = [[[self container] average] isEqualToString:@"$NoGrade"] ? @"N/A" : [[self container] average];
+	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:averageString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange averageContentRange = CFRangeMake(5, CFAttributedStringGetLength(averageString_)-5);
-	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:[NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	NSString *totalString__ = [[[self container] grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]];
+	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:totalString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange totalContentRange = CFRangeMake(5, CFAttributedStringGetLength(totalString_)-5);
 
 	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
@@ -2766,7 +2806,8 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 	CGFloat zoneWidth = rect.size.width/3;
 	
 	// ZONE 1
-	[ColorForGrade([container $gradePercentage]/10.f) setFill];
+	UIColor *colorForGrade = [[container grade] isEqualToString:@"$NoGrade"] ? UIColorFromHexWithAlpha(0x708090, 1.f) : ColorForGrade([container $gradePercentage]/10.f);
+	[colorForGrade setFill];
 	CGRect circleRect = CGRectMake(8.f, zoneHeight/2, zoneHeight, zoneHeight);
 	CGContextFillEllipseInRect(context, circleRect);
 	
@@ -2776,7 +2817,8 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 	CTFontRef dataFont = CTFontCreateWithName((CFStringRef)systemFont, pxtopt(zoneHeight), NULL);
 	CTFontRef boldFont = CTFontCreateCopyWithSymbolicTraits(dataFont, pxtopt(zoneHeight), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
 	
-	CTFramesetterRef fpGradeFramesetter = CreateFramesetter(boldFont, textColor, (CFStringRef)[container grade], NO, kCTLineBreakByTruncatingTail);
+	NSString *gradeString = [[container grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [container grade];
+	CTFramesetterRef fpGradeFramesetter = CreateFramesetter(boldFont, textColor, (CFStringRef)gradeString, NO, kCTLineBreakByTruncatingTail);
 	CGSize gradeRequirement = CTFramesetterSuggestFrameSizeWithConstraints(fpGradeFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL);
 	gradeRequirement.width += 5.f;
 
@@ -2820,13 +2862,17 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 	
 	CTFontRef smallerFont = CTFontCreateCopyWithSymbolicTraits(dataFont, pxtopt(baseGraphRect.size.height), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
 
-	CTFramesetterRef gradeBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)[container grade], NO, kCTLineBreakByTruncatingTail);
+	CTFramesetterRef gradeBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)gradeString, NO, kCTLineBreakByTruncatingTail);
 	CGFloat requiredWidth = CTFramesetterSuggestFrameSizeWithConstraints(gradeBarFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL).width;
-	DrawFramesetter(context, gradeBarFramesetter, CGRectMake(baseGraphRect.origin.x + gradeBarWidth - requiredWidth - 3.f, 6.f + baseGraphRect.size.height, requiredWidth, baseGraphRect.size.height)); CFRelease(gradeBarFramesetter);
+	CGFloat xOrigin = baseGraphRect.origin.x + gradeBarWidth - requiredWidth - 3.f;
+	CGRect gradeBarRect = CGRectMake(xOrigin > baseGraphRect.origin.x ? xOrigin : baseGraphRect.origin.x+2.f, 6.f + baseGraphRect.size.height, requiredWidth, baseGraphRect.size.height);
+	DrawFramesetter(context, gradeBarFramesetter, gradeBarRect); CFRelease(gradeBarFramesetter);
 
 	CTFramesetterRef averageBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)[container average], NO, kCTLineBreakByTruncatingTail);
 	CGFloat requiredWidthAvg = CTFramesetterSuggestFrameSizeWithConstraints(averageBarFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL).width;
-	DrawFramesetter(context, averageBarFramesetter, CGRectMake(baseGraphRect.origin.x + averageBarWidth - requiredWidth - 3.f, 2.f, requiredWidthAvg, baseGraphRect.size.height)); CFRelease(averageBarFramesetter);
+	CGFloat xOriginAvg = baseGraphRect.origin.x + averageBarWidth - requiredWidth - 3.f;
+	CGRect averageBarRect = CGRectMake(xOriginAvg > baseGraphRect.origin.x ? xOriginAvg : baseGraphRect.origin.x+2.f, 2.f, requiredWidthAvg, baseGraphRect.size.height);
+	DrawFramesetter(context, averageBarFramesetter, averageBarRect); CFRelease(averageBarFramesetter);
 	
 	CFRelease(smallerFont);
 	CFRelease(dataFont);
@@ -2845,17 +2891,17 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 		$container = [container retain];
 		[self setBackgroundColor:[UIColor whiteColor]];
 
-		UITableView *tableView = [[UITableView alloc] initWithFrame:(CGRect){{0.f, 0.f}, [self bounds].size} style:UITableViewStylePlain];
+		UITableView *tableView = [[UITableView alloc] initWithFrame:[self bounds] style:UITableViewStylePlain];
 		[tableView setDataSource:self];
 		[tableView setDelegate:self];
 		[tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
 		[self addSubview:tableView];
 		[tableView release];
 		
+		// FIXME: Use CoreText instead of attributed UILabels.
 		UIView *tableHeaderView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 54.f)];
 		CGFloat halfHeight = [tableHeaderView bounds].size.height/2;
 		
-		// FIXME: Use CoreText instead of attributed UILabels.
 		UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f)];
 		[nameLabel setBackgroundColor:[UIColor clearColor]];
 		[nameLabel setTextColor:[UIColor blackColor]];
@@ -2868,40 +2914,40 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 		[nameLabel setFrame:CGRectMake(nameLabel.bounds.origin.x, nameLabel.bounds.origin.y, width, nameLabel.bounds.size.height)];*/
 		[nameLabel release];
 
-		NSString *gradeTitle = @"Nota: ";
-		NSString *averageTitle = @"Média: ";
+		if (![[container grade] isEqualToString:@"$NoGrade"]) {
+			NSString *gradeTitle = @"Nota: ";
+			NSString *averageTitle = @"Média: ";
 
-		NSMutableAttributedString *gradeAttributedString = [[NSMutableAttributedString alloc] initWithString:[gradeTitle stringByAppendingString:[container grade]]];
-		[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [gradeTitle length])];
-		[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([gradeTitle length], [gradeAttributedString length]-[gradeTitle length])];
+			NSMutableAttributedString *gradeAttributedString = [[NSMutableAttributedString alloc] initWithString:[gradeTitle stringByAppendingString:[container grade]]];
+			[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [gradeTitle length])];
+			[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([gradeTitle length], [gradeAttributedString length]-[gradeTitle length])];
+			
+			NSMutableAttributedString *averageAttributedString = [[NSMutableAttributedString alloc] initWithString:[averageTitle stringByAppendingString:[container average]]];
+			[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [averageTitle length])];
+			[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([averageTitle length], [averageAttributedString length]-[averageTitle length])];
+
+			UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 0.f, [self bounds].size.width/3, 27.f)];
+			[gradeLabel setBackgroundColor:[UIColor clearColor]];
+			[gradeLabel setTextColor:[UIColor blackColor]];
+			[gradeLabel setAttributedText:gradeAttributedString];
+			[tableHeaderView addSubview:gradeLabel];
+			[gradeLabel release];
+
+			UILabel *averageLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 22.f, [self bounds].size.width/3, 27.f)];
+			[averageLabel setBackgroundColor:[UIColor clearColor]];
+			[averageLabel setTextColor:[UIColor blackColor]];
+			[averageLabel setAttributedText:averageAttributedString];
+			[tableHeaderView addSubview:averageLabel];
+			[averageLabel release];
+		}
 		
-		NSMutableAttributedString *averageAttributedString = [[NSMutableAttributedString alloc] initWithString:[averageTitle stringByAppendingString:[container average]]];
-		[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [averageTitle length])];
-		[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([averageTitle length], [averageAttributedString length]-[averageTitle length])];
-
-		UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 0.f, [self bounds].size.width/3, 27.f)];
-		[gradeLabel setBackgroundColor:[UIColor clearColor]];
-		[gradeLabel setTextColor:[UIColor blackColor]];
-		[gradeLabel setAttributedText:gradeAttributedString];
-		[tableHeaderView addSubview:gradeLabel];
-		[gradeLabel release];
-
-		UILabel *averageLabel = [[UILabel alloc] initWithFrame:CGRectMake([nameLabel bounds].size.width + 5.f, 22.f, [self bounds].size.width/3, 27.f)];
-		[averageLabel setBackgroundColor:[UIColor clearColor]];
-		[averageLabel setTextColor:[UIColor blackColor]];
-		[averageLabel setAttributedText:averageAttributedString];
-		[tableHeaderView addSubview:averageLabel];
-		[averageLabel release];
-
 		[tableView setTableHeaderView:tableHeaderView];
 		[tableHeaderView release];
-		
-		UIView *footerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 120.f)];
 		
 		NSMutableArray *pieces = [NSMutableArray array];
 		for (GradeContainer *subContainer in [$container subGradeContainers]) {
 			PieChartPiece *piece = [[[PieChartPiece alloc] init] autorelease];
-			[piece setPercentage:[subContainer gradeInSupercontainer]*10];
+			[piece setPercentage:[subContainer gradeInSupercontainer]*10.f];
 			[piece setContainer:subContainer];
 			[piece setColor:RandomColorHex()];
 			[piece setText:[subContainer name]];
@@ -2910,12 +2956,14 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 		}
 		
 		PieChartPiece *emptyPiece = [[[PieChartPiece alloc] init] autorelease];
-		[emptyPiece setPercentage:0];
+		[emptyPiece setPercentage:0.f];
 		[emptyPiece setColor:0x0000ff];
 		[emptyPiece setText:@"Empty"];
 		
-		PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, [footerView bounds].size.width, 120.f) pieces:pieces count:[[$container subGradeContainers] count] inset:5.f emptyPiece:emptyPiece];
+		PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, [pieces count]*40.f) pieces:pieces count:[[$container subGradeContainers] count] radius:55.f emptyPiece:emptyPiece];
 		[mainPieChart setDelegate:self];
+		
+		UIView *footerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, [mainPieChart bounds].size.height)];
 		[footerView addSubview:mainPieChart];
 		[mainPieChart release];
 
@@ -3017,6 +3065,10 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 	[super reloadData];
 	SessionController *sessionController = [SessionController sharedInstance];
 	
+	#define READ_FROM_LOCAL_DEBUG_HTML
+	#ifdef READ_FROM_LOCAL_DEBUG_HTML
+	NSData *data = [NSData dataWithContentsOfFile:@"/Users/BobNelson/Documents/Projects/PortoApp/3rdp.html"];
+	#else
 	NSString *request = [[NSDictionary dictionaryWithObjectsAndKeys:
 		[sessionController gradeID], @"token",
 		$year, @"ctl00$ContentPlaceHolder1$ddlAno",
@@ -3029,7 +3081,9 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 	
 	NSURLResponse *response;
 	NSError *error;
+
 	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:&error];
+	#endif
 
 	// i used this because 3rd period of 2013 was going to be concluded
 	// so i still needed to test this on an incomplete period.
@@ -3041,15 +3095,9 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 	XMLElement *divGeral = [document firstElementMatchingPath:@"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']"];
-	NSLog(@"divGeral: %@", divGeral);
 	
-	NSString *information = [[divGeral firstElementMatchingPath:@"./div[@id='ContentPlaceHolder1_divTurma']/h3"] content];
-	NSLog(@"information: %@", information);
-
 	XMLElement *table = [divGeral firstElementMatchingPath:@"./table[@id='ContentPlaceHolder1_dlMaterias']"];
-	NSLog(@"table: %@", table);
 	NSArray *subjectElements = [table elementsMatchingPath:@"./tr/td/div[@class='container']"];
-	NSLog(@"subjectElements: %@", subjectElements);
 	
 	$rootContainer = [[GradeContainer alloc] init];
 	[$rootContainer setDebugLevel:0];
@@ -3073,18 +3121,26 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 			subjectName = [[subjectName substringFromIndex:1] substringToIndex:[subjectName length]-2];
 			subjectName = [subjectName stringByAppendingString:@" \ue50e"]; // \ue50e is meant to be a DE flag.
 		}
-		else if ([subjectName isEqualToString:@"ARTES VISUAIS"]) continue; // Fix a (porto) bug where we get DE + non-DE Kunst.
+		else if ([subjectName isEqualToString:@"ARTES VISUAIS"]) continue; // Fix a (porto) issue where we get DE + non-DE Kunst (one would hope this doesn't break other dudes' grades)
 
 		[subjectContainer setName:subjectName];
-
-		NSString *totalGrade = [[[[container firstElementMatchingPath:@"./h2[@class='fright ']/span/span[1]/span"] content] componentsSeparatedByString:@":"] objectAtIndex:1];
+		
+		NSString *totalGrade_ = [[container firstElementMatchingPath:@"./h2[@class='fright ']/span/span[1]/span"] content];
+		NSString *totalGrade;
+		if ([totalGrade_ isGrade]) totalGrade = [[totalGrade_ componentsSeparatedByString:@":"] objectAtIndex:1];
+		else totalGrade = @"$NoGrade";
 		[subjectContainer setGrade:[totalGrade americanFloat]];
-		NSString *averageGrade = [[[[container firstElementMatchingPath:@"./h2[@class='fright ']/span/span[2]/span"] content] componentsSeparatedByString:@": "] objectAtIndex:1];
+
+		NSString *averageGrade_ = [[container firstElementMatchingPath:@"./h2[@class='fright ']/span/span[2]/span"] content];
+		NSString *averageGrade;
+		if ([averageGrade_ isGrade]) averageGrade = [[averageGrade_ componentsSeparatedByString:@": "] objectAtIndex:1];
+		else averageGrade = @"$NoGrade";
 		[subjectContainer setAverage:[averageGrade americanFloat]];
 		
 		// TODO: Optimize this into a recursive routine.
 		NSArray *subjectGrades = [[container firstElementMatchingPath:@"./div/table[starts-with(@id, 'ContentPlaceHolder1_dlMaterias_gvNotas')]"] elementsMatchingPath:@"./tr[@class!='headerTable1 p3']"];
 		NSMutableArray *subGradeContainers = [NSMutableArray array];
+		NSMutableArray *subBonusContainers = [NSMutableArray array];
 		for (XMLElement *subsection in subjectGrades) {
 			GradeContainer *subGradeContainer = [[[GradeContainer alloc] init] autorelease];
 			[subGradeContainer setSuperContainer:subjectContainer];
@@ -3094,11 +3150,22 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 			NSString *subsectionName = [[subsection firstElementMatchingPath:@"./td[2]"] content];
 			NSArray *split = [subsectionName componentsSeparatedByString:@" - "];
 			[subGradeContainer setName:[split objectAtIndex:1]];
-			[subGradeContainer setWeight:[[[split objectAtIndex:0] substringWithRange:NSMakeRange(3, 1)] integerValue]];
 
 			NSString *subsectionGrade = [[subsection firstElementMatchingPath:@"./td[3]"] content];
+			if (![subsectionGrade isGrade]) subsectionGrade = @"$NoGrade";
 			[subGradeContainer setGrade:[subsectionGrade americanFloat]];
+			
+			NSString *weightString = [split objectAtIndex:0];
+			if ([weightString hasPrefix:@"Atv"]) {
+				[subGradeContainer setWeight:-1];
+				[subGradeContainer setAverage:@"$Undefined"];
+				[subBonusContainers addObject:subGradeContainer];
+				continue;
+			}
+			[subGradeContainer setWeight:[[[split objectAtIndex:0] substringWithRange:NSMakeRange(3, 1)] integerValue]];
+			
 			NSString *subsectionAverage = [[subsection firstElementMatchingPath:@"./td[4]"] content];
+			if (![subsectionAverage isGrade]) subsectionAverage = @"$NoGrade";
 			[subGradeContainer setAverage:[subsectionAverage americanFloat]];
 			
 			NSMutableArray *subsubGradeContainers = [NSMutableArray array];
@@ -3110,14 +3177,18 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 					[subsubsectionGradeContainer setSuperContainer:subGradeContainer];
 					[subsubsectionGradeContainer setDebugLevel:3];
 					[subsubsectionGradeContainer setWeight:1];
-
+					
 					NSString *subsubsectionName = [[[subsubsection firstElementMatchingPath:@"./td[1]"] content] substringFromIndex:5];
 					[subsubsectionGradeContainer setName:subsubsectionName];
 					NSString *subsubsectionGrade = [[subsubsection firstElementMatchingPath:@"./td[2]"] content];
+					if (![subsubsectionGrade isGrade]) subsubsectionGrade = @"$NoGrade";
 					[subsubsectionGradeContainer setGrade:[subsubsectionGrade americanFloat]];
+					// Values are extremely required to calculate stuff. If we don't have it I'll consider it a flaw.
 					NSString *subsubsectionValue = [[subsubsection firstElementMatchingPath:@"./td[3]"] content];
+					if (![subsubsectionValue isGrade]) continue;
 					[subsubsectionGradeContainer setValue:[subsubsectionValue americanFloat]];
 					NSString *subsubsectionAverage = [[subsubsection firstElementMatchingPath:@"./td[4]"] content];
+					if (![subsubsectionAverage isGrade]) subsubsectionAverage = @"$NoGrade";
 					[subsubsectionGradeContainer setAverage:[subsubsectionAverage americanFloat]];
 
 					[subsubGradeContainers addObject:subsubsectionGradeContainer];
@@ -3129,6 +3200,7 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 		}
 		
 		[subjectContainer setSubGradeContainers:subGradeContainers];
+		[subjectContainer setSubBonusContainers:subBonusContainers];
 		[subjectContainers addObject:subjectContainer];
 	}
 
@@ -3150,7 +3222,7 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 }
 
 - (void)loadContentView {
-	UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, [self view].bounds.size.width, [self view].bounds.size.height)];
+	UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, [self view].bounds.size.width, 367.f)];
 	[scrollView setBackgroundColor:[UIColor whiteColor]];
 	[scrollView setScrollsToTop:NO];
 	[scrollView setPagingEnabled:YES];

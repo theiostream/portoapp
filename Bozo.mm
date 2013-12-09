@@ -53,6 +53,42 @@ Code taken from third parties:
 
 /* }}} */
 
+/* Macros {{{ */
+
+#define SYSTEM_VERSION_GT_EQ(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
+
+#define NUMBER_YES [NSNumber numberWithBool:YES]
+#define NUMBER_NO [NSNumber numberWithBool:NO]
+
+#ifdef DEBUG
+#define debug(...) NSLog(__VA_ARGS__)
+#else
+#define debug(...)
+#endif
+
+// A Macro created on IRC by Maximus!
+// I don't get shifts nor other bitwise operations.
+#define UIColorFromHexWithAlpha(rgbValue,a) \
+	[UIColor colorWithRed:((float)((rgbValue & 0xFF0000) >> 16))/255.0 \
+		green:((float)((rgbValue & 0xFF00) >> 8))/255.0 \
+		blue:((float)(rgbValue & 0xFF))/255.0 \
+		alpha:a]
+
+// Thanks to http://stackoverflow.com/questions/139655/convert-pixels-to-points
+#define pxtopt(px) ( px * 72 / 96 )
+#define pttopx(pt) ( pt * 96 / 72 )
+
+#define kTabBarHeight 49.f
+
+#define MAKE_CORETEXT_CONTEXT(context) \
+	CGContextRef context = UIGraphicsGetCurrentContext(); \
+	CGContextSetTextMatrix(context, CGAffineTransformIdentity); \
+	CGContextTranslateCTM(context, 0, self.bounds.size.height); \
+	CGContextScaleCTM(context, 1.0, -1.0);
+
+
+/* }}} */
+
 /* Helpers {{{ */
 
 /* URL Encoding {{{ */
@@ -190,34 +226,45 @@ static void DrawFramesetter(CGContextRef context, CTFramesetterRef framesetter, 
 
 /* }}} */
 
-/* Random Stuff Generation {{{ */
+/* Colors {{{ */
 
-// This is pretty much the only helper not written by myself (god, i don't intend to use this in production)
-// Taken from https://gist.github.com/kylefox/1689973; MIT Licensed
-__attribute__((unused))
-static UIColor *RandomColor() {
-	CGFloat hue = ( arc4random() % 256 / 256.0 );  //  0.0 to 1.0
-	CGFloat saturation = ( arc4random() % 128 / 256.0 ) + 0.5;  //  0.5 to 1.0, away from white
-	CGFloat brightness = ( arc4random() % 128 / 256.0 ) + 0.5;  //  0.5 to 1.0, away from black
-	return [UIColor colorWithHue:hue saturation:saturation brightness:brightness alpha:1];
+// I wrote this!
+// (and finally put bitwise operation knowledge to use)
+/*#define MixColorHex 0x8FD8D8
+static uint32_t GetNiceColor(int rr, int rg, int rb) {
+	int r = (rr + ((MixColorHex & 0xff0000) >> 16)) / 2;
+	int g = (rg + ((MixColorHex & 0xff00) >> 8)) / 2;
+	int b = (rb + (MixColorHex & 0xff)) / 2;
+	
+	return ((r & 0xff) << 16) + ((g & 0xff) << 8) + (b & 0xff);	
 }
 
-__attribute__((unused))
 static uint32_t RandomColorHex() {
-	return (arc4random()*0xFFFFFF<<0);
+	// commentout
+	int rr = arc4random_uniform(256);
+	int rg = arc4random_uniform(256);
+	int rb = arc4random_uniform(256);
+
+	int rr = arc4random() % 256;
+	int rg = arc4random() % 256;
+	int rb = arc4random() % 256;
+	
+	return GetNiceColor(rr, rg, rb);
+}*/
+
+static uint32_t Colors[64] = { 0x000000,0x00FF00,0x0000FF,0xFF0000,0x01FFFE,0xFFA6FE,0xFFDB66,0x006401,0x010067,0x95003A,0x007DB5,0xFF00F6,0xFFEEE8,0x774D00,0x90FB92,0x0076FF,0xD5FF00,0xFF937E,0x6A826C,0xFF029D,0xFE8900,0x7A4782,0x7E2DD2,0x85A900,0xFF0056,0xA42400,0x00AE7E,0x683D3B,0xBDC6FF,0x263400,0xBDD393,0x00B917,0x9E008E,0x001544,0xC28C9F,0xFF74A3,0x01D0FF,0x004754,0xE56FFE,0x788231,0x0E4CA1,0x91D0CB,0xBE9970,0x968AE8,0xBB8800,0x43002C,0xDEFF74,0x00FFC6,0xFFE502,0x620E00,0x008F9C,0x98FF52,0x7544B1,0xB500FF,0x00FF78,0xFF6E41,0x005F39,0x6B6882,0x5FAD4E,0xA75740,0xA5FFD2,0xFFB167,0x009BFF,0xE85EBE };
+static uint32_t RandomColorHex() {
+	return Colors[arc4random_uniform(64)];
 }
 
-void RandomCString(char *s, const int len) {
-	static const char alphanum[] =
-		"0123456789"
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-		"abcdefghijklmnopqrstuvwxyz";
-
-	for (int i = 0; i < len; ++i) {
-		s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
-	}
-
-	s[len] = 0;
+static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
+	UIColor *color;
+	
+	if (grade < 6) color = graded ? UIColorFromHexWithAlpha(0xFF3300, 1.f) : UIColorFromHexWithAlpha(0xC75F5F, 1.f);
+	else if (grade < 8) color = graded ? UIColorFromHexWithAlpha(0xFFCC00, 1.f) : UIColorFromHexWithAlpha(0xC7A15F, 1.f);
+	else color = graded ? UIColorFromHexWithAlpha(0x33CC33, 1.f) : UIColorFromHexWithAlpha(0x5FA4C7, 1.f);
+	
+	return color;
 }
 
 /* }}} */
@@ -236,40 +283,12 @@ static UIImage *UIImageResize(UIImage *image, CGSize newSize) {
 
 /* }}} */
 
+
 /* }}} */
 
 /* Constants {{{ */
 
 #define kPortoRootURL @"http://www.portoseguro.org.br/"
-
-/* }}} */
-
-/* Macros {{{ */
-
-#define SYSTEM_VERSION_GT_EQ(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
-
-#define NUMBER_YES [NSNumber numberWithBool:YES]
-#define NUMBER_NO [NSNumber numberWithBool:NO]
-
-#ifdef DEBUG
-#define debug(...) NSLog(__VA_ARGS__)
-#else
-#define debug(...)
-#endif
-
-// A Macro created on IRC by Maximus!
-// I don't get shifts nor other bitwise operations.
-#define UIColorFromHexWithAlpha(rgbValue,a) \
-	[UIColor colorWithRed:((float)((rgbValue & 0xFF0000) >> 16))/255.0 \
-		green:((float)((rgbValue & 0xFF00) >> 8))/255.0 \
-		blue:((float)(rgbValue & 0xFF))/255.0 \
-		alpha:a]
-
-// Thanks to http://stackoverflow.com/questions/139655/convert-pixels-to-points
-#define pxtopt(px) ( px * 72 / 96 )
-#define pttopx(pt) ( pt * 96 / 72 )
-
-#define kTabBarHeight 49.f
 
 /* }}} */
 
@@ -402,6 +421,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	PieChartPiece *$emptyPiece;
 	NSArray *$pieces;
 	CGFloat $radius;
+
+	NSInteger $percentageSum;
 }
 @property(nonatomic, assign) id<PieChartViewDelegate> delegate;
 
@@ -826,7 +847,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[image release];
 
 	[centerView release];
-	[label release];
 
 	[super dealloc];
 }
@@ -859,7 +879,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 @end
 
-#define PieChartSliderView_DiffWidth 55.f
+#define PieChartSliderView_DiffWidth 48.f
 @implementation PieChartSliderView
 @synthesize delegate;
 
@@ -931,7 +951,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CFRelease(nameFramesetter);
 	
 	CGFloat diff = -(([[[$piece container] grade] floatValue] - [$slider value]*10.f) * [[[$piece container] value] floatValue]/10.f);
-	CTFramesetterRef changeFramesetter = CreateFramesetter(dataFont, textColor, (CFStringRef)[NSString stringWithFormat:@"%s%.2f", diff>=0?"+":"", diff], NO, kCTLineBreakByTruncatingTail, kCTRightTextAlignment);
+	CTFramesetterRef changeFramesetter = CreateFramesetter(dataFont, textColor, (CFStringRef)[NSString stringWithFormat:@"%s%.1f", diff>=0?"+":"", diff], NO, kCTLineBreakByTruncatingTail, kCTRightTextAlignment);
 	DrawFramesetter(context, changeFramesetter, CGRectMake(rect.size.width - PieChartSliderView_DiffWidth + 5.f, 0.f, PieChartSliderView_DiffWidth - 10.f, rect.size.height/2));
 	CFRelease(changeFramesetter);
 	
@@ -951,7 +971,17 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @end
 
 #define kPieChartViewInset 5.f
+#define kGradeTotalFontSize 22.f
+
 @implementation PieChartView
++ (CGFloat)rowHeight {
+	return 40.f;
+}
+
++ (CGFloat)minHeightForRadius:(CGFloat)radius {
+	return radius*2 + kPieChartViewInset*3 + kGradeTotalFontSize;
+}
+
 - (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count radius:(CGFloat)radius emptyPiece:(PieChartPiece *)empty {
 	if ((self = [super initWithFrame:frame])) {
 		$pieces = [pieces retain];
@@ -971,7 +1001,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		CGFloat startAngle = totalAngle/2;
 		CGFloat percentageSum = 0;
 		
-		CGFloat pieChartSliderOrigin = 0.f;
+		CGFloat pieChartSliderOrigin = 2.f;
 		for (PieChartPiece *piece in pieces) {			
 			CGFloat deg = [piece percentage] * 360.f / 100.f; // TODO: Make this radians already?
 			
@@ -996,6 +1026,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			[self addSubview:sliderView];
 			[sliderView release];
 		}
+		$percentageSum = percentageSum;
 		
 		if ($emptyPiece != nil) {
 			[$emptyPiece setPercentage:100.f - percentageSum];
@@ -1050,6 +1081,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 		percentageSum += [piece percentage];
 	}
+	$percentageSum = percentageSum;
 
 	[$emptyPiece setPercentage:100.f - percentageSum];
 	CGFloat deg = [$emptyPiece percentage] * 360.f / 100.f;
@@ -1059,6 +1091,56 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CGPathAddArc(path, NULL, center.x, center.y, $radius, startAngle, startAngle + deg2rad(deg), false);
 	[(CAShapeLayer *)[$emptyPiece layer] setPath:path];
 	CGPathRelease(path);
+
+	[self setNeedsDisplay];
+}
+
+- (void)drawRect:(CGRect)rect {
+	/* Fundação Visconde de Porto Seguro rage {{{
+	So, since I'm about to implement the total/circle thing for the pie chart view (which is nice), I should write this up.
+	Today, 4th of December 2013, I went to my school for the Pedagogic Day, where we were meant to discuss how parents
+	and students could have a bigger part at school decisions.
+
+	What happened:
+	- Two days prior, Director Admir, who had been at our school for 28 years (my age * 2) was fired. Out of the blue. Due to mere "reorganization of the Diretoria".
+        - This "reorganization" thing pretty much isolates Valinhos from São Paulo.
+	- This day, two B-Zug teachers were fired for no reason at all.
+	- After a promise this wouldn't be done until further discussion, wires for cameras are being installed in our classrooms.
+
+	This is here to show how screwed-up our school direction is.
+	Because it has become a corporation.
+	Run by the four businessmen in suits who sit in a room in São Paulo: the Fundação Visconde de Porto Seguro.
+
+	If I ever sell this app's codebase to them, I'd find it good that they actually see this.
+	But that's not happening :P
+	 }}} */
+
+	MAKE_CORETEXT_CONTEXT(context);
+	[[UIColor whiteColor] setFill];
+	CGContextFillRect(context, rect);
+	
+	[UIColorFromHexWithAlpha(0xd8d8d8, 1.f) setFill];
+	CGContextFillRect(context, CGRectMake(0.f, rect.size.height - 1.5f, rect.size.width, 1.5f));
+	
+	CGFloat grade = $percentageSum / 10.f;
+	CGFloat width = kPieChartViewInset * 2 + $radius * 2;
+	
+	CGColorRef textColor = [[UIColor blackColor] CGColor];
+	NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
+	CTFontRef font = CTFontCreateWithName((CFStringRef)systemFont, pxtopt(kGradeTotalFontSize), NULL);
+	
+	CTFramesetterRef framesetter = CreateFramesetter(font, textColor, (CFStringRef)[NSString stringWithFormat:@"%.2f", grade], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRelease(font);
+	CGSize requirement = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL);
+	
+	CGFloat xOrigin = width/2 - (20.f + 5.f + requirement.width)/2;
+
+	UIColor *color = ColorForGrade(grade);
+        [color setFill];
+	CGContextFillEllipseInRect(context, CGRectMake(xOrigin, kPieChartViewInset, 20.f, 20.f));
+	
+	DrawFramesetter(context, framesetter, CGRectMake(xOrigin + 20.f + 5.f, kPieChartViewInset - 1.5f, requirement.width, kGradeTotalFontSize));
+	CFRelease(framesetter);
 }
 
 - (void)dealloc {
@@ -2777,16 +2859,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @implementation TestView
 @synthesize container;
 
-static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
-	UIColor *color;
-	
-	if (grade < 6) color = graded ? UIColorFromHexWithAlpha(0xFF3300, 1.f) : UIColorFromHexWithAlpha(0xC75F5F, 1.f);
-	else if (grade < 8) color = graded ? UIColorFromHexWithAlpha(0xFFCC00, 1.f) : UIColorFromHexWithAlpha(0xC7A15F, 1.f);
-	else color = graded ? UIColorFromHexWithAlpha(0x33CC33, 1.f) : UIColorFromHexWithAlpha(0x5FA4C7, 1.f);
-	
-	return color;
-}
-
 - (void)drawRect:(CGRect)rect {
 	NSLog(@"-[TestView drawRect:%@] with %@", NSStringFromCGRect(rect), NSStringFromClass([self class]));
 	
@@ -2957,10 +3029,12 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 		
 		PieChartPiece *emptyPiece = [[[PieChartPiece alloc] init] autorelease];
 		[emptyPiece setPercentage:0.f];
-		[emptyPiece setColor:0x0000ff];
+		[emptyPiece setColor:0x000000];
 		[emptyPiece setText:@"Empty"];
 		
-		PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, [pieces count]*40.f) pieces:pieces count:[[$container subGradeContainers] count] radius:55.f emptyPiece:emptyPiece];
+		CGFloat rowsHeight = [pieces count] * [PieChartView rowHeight];
+		CGFloat minHeight = [PieChartView minHeightForRadius:55.f];
+		PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, rowsHeight < minHeight ? minHeight : rowsHeight) pieces:pieces count:[[$container subGradeContainers] count] radius:55.f emptyPiece:emptyPiece];
 		[mainPieChart setDelegate:self];
 		
 		UIView *footerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, [mainPieChart bounds].size.height)];
@@ -3065,7 +3139,7 @@ static UIColor *ColorForGrade(CGFloat grade, BOOL graded = YES) {
 	[super reloadData];
 	SessionController *sessionController = [SessionController sharedInstance];
 	
-	#define READ_FROM_LOCAL_DEBUG_HTML
+	//#define READ_FROM_LOCAL_DEBUG_HTML
 	#ifdef READ_FROM_LOCAL_DEBUG_HTML
 	NSData *data = [NSData dataWithContentsOfFile:@"/Users/BobNelson/Documents/Projects/PortoApp/3rdp.html"];
 	#else
@@ -3577,4 +3651,3 @@ int main(int argc, char **argv) {
 /* }}} */
 
 /* }}} */
-

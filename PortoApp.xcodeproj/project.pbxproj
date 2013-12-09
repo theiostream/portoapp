@@ -47,7 +47,7 @@
 		EDB4081817E25F7500521640 /* Default@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default@2x.png"; sourceTree = "<group>"; };
 		EDB4081A17E25F7500521640 /* Default-568h@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default-568h@2x.png"; sourceTree = "<group>"; };
 		EDB4082117E25FA600521640 /* Bozo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Bozo.h; sourceTree = "<group>"; };
-		EDB4082217E25FA600521640 /* Bozo.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = Bozo.mm; sourceTree = "<group>"; };
+		EDB4082217E25FA600521640 /* Bozo.mm */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.cpp.objcpp; path = Bozo.mm; sourceTree = "<group>"; tabWidth = 8; };
 		EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.2.dylib; path = usr/lib/libxml2.2.dylib; sourceTree = SDKROOT; };
 		EDD1A9F617E7C27B00AA26CF /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -217,7 +217,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    /usr/bin/ldid -S ${APP}/PortoApp\n\n    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.148:/Applications/\n    sleep 5\n    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.148 \"killall -9 backboardd\"\nfi";
+			shellScript = "if [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    cp -r ${APP} /Users/BobNelson/Documents/Projects/PortoApp/Releases\n\n    /usr/bin/ldid -S ${APP}/PortoApp\n\n    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.148:/Applications/\n    sleep 5\n    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.148 \"killall -9 backboardd\"\nfi";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -308,6 +308,7 @@
 				HEADER_SEARCH_PATHS = "~/theos/include";
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos6.1;
 				WRAPPER_EXTENSION = app;
 			};
 			name = Debug;
@@ -322,6 +323,7 @@
 				HEADER_SEARCH_PATHS = "~/theos/include";
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos6.1;
 				WRAPPER_EXTENSION = app;
 			};
 			name = Release;

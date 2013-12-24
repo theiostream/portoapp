@@ -283,6 +283,19 @@ static UIImage *UIImageResize(UIImage *image, CGSize newSize) {
 
 /* }}} */
 
+// Thanks to http://iphonedevsdk.com/forum/iphone-sdk-development/7953-height-of-standard-navbar-tabbar-statusbar.html
+#define HEIGHT_OF_STATUSBAR 20.f
+#define HEIGHT_OF_NAVBAR 44.f
+#define HEIGHT_OF_TABBAR 50.f
+
+#define HEIGHT_WITH_TABBARCONTROLLER ([[UIScreen mainScreen] applicationFrame].size.height - HEIGHT_OF_NAVBAR - HEIGHT_OF_TABBAR)
+
+static CGRect FixViewBounds(CGRect bounds) {
+	if (SYSTEM_VERSION_GT_EQ(@"7.0")) bounds.origin.y += HEIGHT_OF_STATUSBAR + HEIGHT_OF_NAVBAR;
+	bounds.size.height = HEIGHT_WITH_TABBARCONTROLLER + 1.f;
+
+	return bounds;
+}
 
 /* }}} */
 
@@ -846,7 +859,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[text release];
 	[image release];
 
-	[centerView release];
+	//[centerView release];
 
 	[super dealloc];
 }
@@ -1509,10 +1522,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)loadView {
 	[super loadView];
 
-	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:[[self view] bounds]];
+	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
 	[[self view] addSubview:$loadingView];
 
-	$failureView = [[FailView alloc] initWithFrame:[[self view] bounds]];
+	$failureView = [[FailView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
 	[$failureView setBackgroundColor:[UIColor redColor]];
 	[$failureView setHidden:YES];
 	[[self view] addSubview:$failureView];
@@ -1629,7 +1642,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)loadContentView {
-	$contentView = [[UIView alloc] initWithFrame:[[self view] bounds]];
+	$contentView = [[UIView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
 }
 
 - (void)unloadContentView {
@@ -3344,7 +3357,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)loadContentView {
-	UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, [self view].bounds.size.width, 367.f)];
+	UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:FixViewBounds([[self view] bounds])/*CGRectMake(0.f, 0.f, [self view].bounds.size.width, 367.f)*/];
 	[scrollView setBackgroundColor:[UIColor whiteColor]];
 	[scrollView setScrollsToTop:NO];
 	[scrollView setPagingEnabled:YES];
@@ -3475,7 +3488,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)loadContentView {
-	UITableView *tableView = [[UITableView alloc] initWithFrame:[[self view] bounds] style:UITableViewStylePlain];
+	UITableView *tableView = [[UITableView alloc] initWithFrame:FixViewBounds([[self view] bounds]) style:UITableViewStylePlain];
 	[tableView setDelegate:self];
 	[tableView setDataSource:self];
 

@@ -565,8 +565,11 @@ static int XMLElementOutputCloseCallback(void *context) {
 	return self;
 }
 
+// Patch for iOS 7 thanks to http://www.blogosfera.co.uk/2013/06/abtableviewcell-issue-in-ios-7-with-drawcontentview-closed/
 - (void)drawRect:(CGRect)rect {
-	[(ABTableViewCell *)[self superview] drawContentView:rect highlighted:NO];
+    UIView *v = self;
+    while (v && ![v isKindOfClass:[ABTableViewCell class]]) v = v.superview;
+	[(ABTableViewCell *)v drawContentView:rect highlighted:NO];
 }
 @end
 
@@ -580,7 +583,9 @@ static int XMLElementOutputCloseCallback(void *context) {
 }
 
 - (void)drawRect:(CGRect)rect {
-	[(ABTableViewCell *)[self superview] drawContentView:rect highlighted:YES];
+	UIView *v = self;
+    while (v && ![v isKindOfClass:[ABTableViewCell class]]) v = v.superview;
+	[(ABTableViewCell *)v drawContentView:rect highlighted:NO];
 }
 @end
 

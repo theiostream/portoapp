@@ -629,6 +629,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @property(nonatomic, retain) NSArray *subGradeContainers;
 @property(nonatomic, retain) NSArray *subBonusContainers;
 @property(nonatomic, retain) GradeContainer *superContainer;
+@property(nonatomic, assign) BOOL isBonus;
 
 - (NSInteger)totalWeight;
 - (BOOL)isAboveAverage;
@@ -652,7 +653,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @interface SubjectTableHeaderView : TestView
 @end
-
 @interface SubjectTableViewCellContentView : TestView
 @end
 
@@ -2627,11 +2627,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 // This is a node.
 // GradeContainer sounds better than GradeNode.
 @implementation GradeContainer
-@synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer;
+@synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer, isBonus;
 
 - (id)init {
 	if ((self = [super init])) {
 		debugLevel = 0;
+		isBonus = NO;
 	}
 
 	return self;
@@ -2745,6 +2746,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 // FIXME: Review ranges on both classes.
 @implementation SubjectTableHeaderView
 - (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
+	NSLog(@"hi wtf you thinkin %@", [[self container] name]);
+
 	CGFloat zoneWidth2 = rect.size.width/4;
 	
 	NSString *gradeString__ = [[[self container] grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [[self container] grade];
@@ -2875,10 +2878,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CGContextFillRect(context, rect);
 	
 	CGFloat zoneHeight = rect.size.height/2;
-	CGFloat zoneWidth = rect.size.width/3;
+	CGFloat zoneWidth = [container isBonus] ? rect.size.width : rect.size.width/3;
 	
 	// ZONE 1
-	UIColor *colorForGrade = [[container grade] isEqualToString:@"$NoGrade"] ? UIColorFromHexWithAlpha(0x708090, 1.f) : ColorForGrade([container $gradePercentage]/10.f);
+	UIColor *colorForGrade = [[container grade] isEqualToString:@"$NoGrade"] || [container isBonus] ? UIColorFromHexWithAlpha(0x708090, 1.f) : ColorForGrade([container $gradePercentage]/10.f);
 	[colorForGrade setFill];
 	CGRect circleRect = CGRectMake(8.f, zoneHeight/2, zoneHeight, zoneHeight);
 	CGContextFillEllipseInRect(context, circleRect);
@@ -2903,7 +2906,16 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	DrawFramesetter(context, fpGradeFramesetter, CGRectMake(examRect.origin.x + examRect.size.width, zoneHeight/2, gradeRequirement.width, zoneHeight));
 	CFRelease(fpGradeFramesetter);
 	
+	if ([container isBonus]) {
+		CFRelease(dataFont);
+		CFRelease(boldFont);
+		
+		NSLog(@"im bonus bye");
+		return;
+	}
+
 	// ZONE 2
+	NSLog(@"we callin this for bonus %d and name supposedly %@", [container isBonus], [container name]);
 	[self drawDataZoneRect:CGRectMake(zoneWidth, 0.f, zoneWidth, rect.size.height) textColor:textColor dataFont:dataFont boldFont:boldFont inContext:context];
 	
 	// ZONE 3
@@ -3049,10 +3061,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return [[$container subGradeContainers] count];
+	return [[$container subGradeContainers] count] + [[$container subBonusContainers] count];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	if (section >= [[$container subGradeContainers] count]) return 0;
 	return [[[[$container subGradeContainers] objectAtIndex:section] subGradeContainers] count];
 }
 
@@ -3093,14 +3106,26 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
 	// FIXME: no more constant 44.f
+	Class headerViewClass;
+	GradeContainer *container;
+	if (section >= [[$container subGradeContainers] count]) {
+		container = [[$container subBonusContainers] objectAtIndex:section - [[$container subGradeContainers] count]];
+		headerViewClass = [TestView class];
+	}
+	else {
+		container = [[$container subGradeContainers] objectAtIndex:section];
+		headerViewClass = [SubjectTableHeaderView class];
+	}
+	
 	UIScrollView *scrollView = [[[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, 44.f)] autorelease];
-	[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * 3, scrollView.bounds.size.height)];
-	[scrollView setScrollsToTop:NO];
+	[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * ([container isBonus] ? 1 : 3), scrollView.bounds.size.height)];
+	[scrollView setScrollsToTop:NO]; 
 	[scrollView setShowsHorizontalScrollIndicator:NO];
 	[scrollView setPagingEnabled:YES];
-
-	SubjectTableHeaderView *headerView = [[SubjectTableHeaderView alloc] initWithFrame:CGRectMake(0.f, 0.f, [scrollView contentSize].width, [scrollView contentSize].height)];
-	[headerView setContainer:[[$container subGradeContainers] objectAtIndex:section]];
+	
+	CGRect frame = CGRectMake(0.f, 0.f, [scrollView contentSize].width, [scrollView contentSize].height);
+        TestView *headerView = [[headerViewClass alloc] initWithFrame:frame];
+	[headerView setContainer:container];
 	[scrollView addSubview:headerView];
 	[headerView release];
 
@@ -3186,6 +3211,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[subjectContainer setDebugLevel:1];
 		[subjectContainer makeValueTen];
 		[subjectContainer setWeight:1];
+		[subjectContainer setIsBonus:NO];
 		
 		NSString *subjectName = [[container firstElementMatchingPath:@"./h2[@class='fleft m10r ']/span"] content];
 		subjectName = [subjectName stringByReplacingOccurrencesOfString:@"LÍNG. ESTR. MOD. " withString:@""]; // remove LING ESTR MOD. I can now live in peace.
@@ -3214,12 +3240,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		// TODO: Optimize this into a recursive routine.
 		NSArray *subjectGrades = [[container firstElementMatchingPath:@"./div/table[starts-with(@id, 'ContentPlaceHolder1_dlMaterias_gvNotas')]"] elementsMatchingPath:@"./tr[@class!='headerTable1 p3']"];
 		NSMutableArray *subGradeContainers = [NSMutableArray array];
-		NSMutableArray *subBonusContainers = [NSMutableArray array];
 		for (XMLElement *subsection in subjectGrades) {
 			GradeContainer *subGradeContainer = [[[GradeContainer alloc] init] autorelease];
 			[subGradeContainer setSuperContainer:subjectContainer];
 			[subGradeContainer setDebugLevel:2];
 			[subGradeContainer makeValueTen];
+			[subGradeContainer setIsBonus:NO];
 
 			NSString *subsectionName = [[subsection firstElementMatchingPath:@"./td[2]"] content];
 			NSArray *split = [subsectionName componentsSeparatedByString:@" - "];
@@ -3230,13 +3256,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			[subGradeContainer setGrade:[subsectionGrade americanFloat]];
 			
 			NSString *weightString = [split objectAtIndex:0];
-			if ([weightString hasPrefix:@"Atv"]) {
-				[subGradeContainer setWeight:-1];
-				[subGradeContainer setAverage:@"$Undefined"];
-				[subBonusContainers addObject:subGradeContainer];
-				continue;
-			}
-			[subGradeContainer setWeight:[[[split objectAtIndex:0] substringWithRange:NSMakeRange(3, 1)] integerValue]];
+			[subGradeContainer setWeight:[[weightString substringWithRange:NSMakeRange(3, 1)] integerValue]];
 			
 			NSString *subsectionAverage = [[subsection firstElementMatchingPath:@"./td[4]"] content];
 			if (![subsectionAverage isGrade]) subsectionAverage = @"$NoGrade";
@@ -3251,6 +3271,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 					[subsubsectionGradeContainer setSuperContainer:subGradeContainer];
 					[subsubsectionGradeContainer setDebugLevel:3];
 					[subsubsectionGradeContainer setWeight:1];
+					[subsubsectionGradeContainer setIsBonus:NO];
 					
 					NSString *subsubsectionName = [[[subsubsection firstElementMatchingPath:@"./td[1]"] content] substringFromIndex:5];
 					[subsubsectionGradeContainer setName:subsubsectionName];
@@ -3272,6 +3293,31 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			[subGradeContainer setSubGradeContainers:subsubGradeContainers];
 			[subGradeContainers addObject:subGradeContainer];
 		}
+
+		NSMutableArray *subBonusContainers = [NSMutableArray array];
+		NSArray *bonusGrades = [[container firstElementMatchingPath:@"./div/table[starts-with(@id, 'ContentPlaceHolder1_dlMaterias_gvAtividades')]"] elementsMatchingPath:@"./tr"];
+		if (bonusGrades != nil) {
+			for (XMLElement *subsection in bonusGrades) {
+				GradeContainer *bonusContainer = [[[GradeContainer alloc] init] autorelease];
+				[bonusContainer setSuperContainer:subjectContainer];
+				[bonusContainer setDebugLevel:2];
+				
+				[bonusContainer makeValueTen]; // when we get the percentage we'll be sure it's the whole grade's
+				[bonusContainer setAverage:@"$NoGrade"];
+				[bonusContainer setWeight:-1];
+				[bonusContainer setIsBonus:YES];
+
+				NSString *subsectionName = [[subsection firstElementMatchingPath:@"./td[2]"] content];
+				NSArray *split = [subsectionName componentsSeparatedByString:@" - "];
+				[bonusContainer setName:[@"Bônus " stringByAppendingString:[split objectAtIndex:1]]];
+
+				NSString *subsectionGrade = [[subsection firstElementMatchingPath:@"./td[3]"] content];
+				if (![subsectionGrade isGrade]) subsectionGrade = @"$NoGrade";
+				[bonusContainer setGrade:[subsectionGrade americanFloat]];
+
+				[subBonusContainers addObject:bonusContainer];
+			}
+		}
 		
 		[subjectContainer setSubGradeContainers:subGradeContainers];
 		[subjectContainer setSubBonusContainers:subBonusContainers];
@@ -3287,12 +3333,14 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	/*      Cristina Santos: Olha só parabéns u.u
 		Cristina Santos: Gostei de ver
 	NSLog(@"%@", $rootContainer); */
-
+        
+        NSLog(@"pre-block!");
 	[self $performUIBlock:^{
 		[self prepareContentView];
 		[self displayContentView];
 		NSLog(@"content view is %@ so wat.", $contentView);
 	}];
+        NSLog(@"meh");
 }
 
 - (void)loadContentView {

@@ -308,7 +308,7 @@
 				HEADER_SEARCH_PATHS = "~/theos/include";
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos6.1;
+				SDKROOT = iphoneos7.0;
 				WRAPPER_EXTENSION = app;
 			};
 			name = Debug;
@@ -323,7 +323,7 @@
 				HEADER_SEARCH_PATHS = "~/theos/include";
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos6.1;
+				SDKROOT = iphoneos7.0;
 				WRAPPER_EXTENSION = app;
 			};
 			name = Release;

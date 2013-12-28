@@ -78,14 +78,13 @@ Code taken from third parties:
 #define pxtopt(px) ( px * 72 / 96 )
 #define pttopx(pt) ( pt * 96 / 72 )
 
-#define kTabBarHeight 49.f
-
 #define MAKE_CORETEXT_CONTEXT(context) \
 	CGContextRef context = UIGraphicsGetCurrentContext(); \
 	CGContextSetTextMatrix(context, CGAffineTransformIdentity); \
 	CGContextTranslateCTM(context, 0, self.bounds.size.height); \
 	CGContextScaleCTM(context, 1.0, -1.0);
 
+#define AmericanLocale [NSLocale localeWithLocaleIdentifier:@"en_US"]
 
 /* }}} */
 
@@ -203,7 +202,7 @@ static CFAttributedStringRef CreateBaseAttributedString(CTFontRef font, CGColorR
 }
 
 static CTFramesetterRef CreateFramesetter(CTFontRef font, CGColorRef textColor, CFStringRef string, BOOL underlined, CTLineBreakMode lineBreakMode = kCTLineBreakByWordWrapping, CTTextAlignment alignment = kCTLeftTextAlignment) {
-	CFAttributedStringRef attributedString = CreateBaseAttributedString(font, textColor, string, underlined, lineBreakMode);
+	CFAttributedStringRef attributedString = CreateBaseAttributedString(font, textColor, string, underlined, lineBreakMode, alignment);
 	CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString(attributedString);
 	CFRelease(attributedString);
 
@@ -283,6 +282,7 @@ static UIImage *UIImageResize(UIImage *image, CGSize newSize) {
 
 /* }}} */
 
+/* Fix View Bounds {{{ */
 // Thanks to http://iphonedevsdk.com/forum/iphone-sdk-development/7953-height-of-standard-navbar-tabbar-statusbar.html
 #define HEIGHT_OF_STATUSBAR 20.f
 #define HEIGHT_OF_NAVBAR 44.f
@@ -296,6 +296,8 @@ static CGRect FixViewBounds(CGRect bounds) {
 
 	return bounds;
 }
+
+/* }}} */
 
 /* }}} */
 
@@ -404,6 +406,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @property(nonatomic, assign) uint32_t color;
 @property(nonatomic, retain) NSString *text;
 @property(nonatomic, retain) CALayer *layer;
+@property(nonatomic, assign) BOOL isBonus;
 @end
 
 // TODO: Better implementation.
@@ -419,6 +422,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 @property(nonatomic, assign) id<PieChartSliderViewDelegate> delegate;
+- (UISlider *)slider;
 
 - (PieChartPiece *)piece;
 - (id)initWithFrame:(CGRect)frame piece:(PieChartPiece *)piece;
@@ -440,6 +444,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @property(nonatomic, assign) id<PieChartViewDelegate> delegate;
 
 - (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count radius:(CGFloat)radius emptyPiece:(PieChartPiece *)empty;
+- (void)updateBonusSliders;
 @end
 
 @protocol PieChartViewDelegate <NSObject>
@@ -642,7 +647,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @property(nonatomic, retain) NSArray *subGradeContainers;
 @property(nonatomic, retain) NSArray *subBonusContainers;
 @property(nonatomic, retain) GradeContainer *superContainer;
+
 @property(nonatomic, assign) BOOL isBonus;
+@property(nonatomic, assign) NSUInteger section;
 
 - (NSInteger)totalWeight;
 - (BOOL)isAboveAverage;
@@ -662,11 +669,16 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface TestView : UIView {
 }
 @property(nonatomic, retain) GradeContainer *container;
+- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context;
 @end
 
 @interface SubjectTableHeaderView : TestView
 @end
 @interface SubjectTableViewCellContentView : TestView
+@end
+@interface SubjectBonusTableHeaderView : TestView <UITextFieldDelegate> {
+	UITextField *$textField;
+}
 @end
 
 @interface SubjectView : UIView <UITableViewDataSource, UITableViewDelegate, PieChartViewDelegate> {
@@ -752,7 +764,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @implementation LoadingIndicatorView
 - (id)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame]) != nil) {
-        container_ = [[UIView alloc] init];
+        [self setBackgroundColor:[UIColor whiteColor]];
+
+	container_ = [[UIView alloc] init];
         [container_ setAutoresizingMask:UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin];
         
         spinner_ = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
@@ -870,7 +884,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* Pie Chart View {{{ */
 
 @implementation PieChartPiece
-@synthesize percentage, container, color, text, layer;
+@synthesize percentage, container, color, text, layer, isBonus;
 
 - (void)dealloc {
 	[container release];
@@ -912,13 +926,17 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[$slider setThumbImage:knobPressedImage forState:UIControlStateHighlighted];
 		[$slider setMinimumTrackTintColor:color];
 		
-		[$slider setValue:[[[$piece container] grade] floatValue]/10.f]; // fuck.
+		[$slider setValue:[[[$piece container] grade] floatValue] / [[[$piece container] value] floatValue]]; // fuck.
 		[$slider addTarget:self action:@selector(sliderDidSlide:) forControlEvents:UIControlEventValueChanged];
 		
 		[self addSubview:$slider];
 	}
 
 	return self;
+}
+
+- (UISlider *)slider {
+	return $slider;
 }
 
 - (void)sliderDidSlide:(UISlider *)slider {
@@ -932,9 +950,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	UITouch *touch = [touches anyObject];
 	CGPoint location = [touch locationInView:self];
 	if (CGRectContainsPoint(CGRectMake([self bounds].size.width - PieChartSliderView_DiffWidth, 0.f, PieChartSliderView_DiffWidth, [self bounds].size.height), location)) {
-		[$slider setValue:[[[$piece container] grade] floatValue]/10.f animated:YES];
+		[$slider setValue:[[[$piece container] grade] floatValue] / [[[$piece container] value] floatValue] animated:YES];
 		[self sliderDidSlide:$slider];
-		[self setNeedsDisplay];
 	}
 }
 
@@ -963,12 +980,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	DrawFramesetter(context, nameFramesetter, CGRectMake(0.f, 15.f, rect.size.width - PieChartSliderView_DiffWidth, 25.f));
 	CFRelease(nameFramesetter);
 	
-	CGFloat diff = -(([[[$piece container] grade] floatValue] - [$slider value]*10.f) * [[[$piece container] value] floatValue]/10.f);
+	//CGFloat diff = -(([[[$piece container] grade] floatValue] - [$slider value]*10.f) * [[[$piece container] value] floatValue]/10.f); wtf daniel
+	CGFloat diff = ([$slider value]*[[[$piece container] value] floatValue]) - [[[$piece container] grade] floatValue];
 	CTFramesetterRef changeFramesetter = CreateFramesetter(dataFont, textColor, (CFStringRef)[NSString stringWithFormat:@"%s%.1f", diff>=0?"+":"", diff], NO, kCTLineBreakByTruncatingTail, kCTRightTextAlignment);
 	DrawFramesetter(context, changeFramesetter, CGRectMake(rect.size.width - PieChartSliderView_DiffWidth + 5.f, 0.f, PieChartSliderView_DiffWidth - 10.f, rect.size.height/2));
 	CFRelease(changeFramesetter);
 	
-	CTFramesetterRef gradeFramesetter = CreateFramesetter(boldFont, textColor, (CFStringRef)[NSString stringWithFormat:@"%.2f", [$slider value]*10], NO, kCTLineBreakByTruncatingTail, kCTRightTextAlignment);
+	CTFramesetterRef gradeFramesetter = CreateFramesetter(boldFont, textColor, (CFStringRef)[NSString stringWithFormat:@"%.2f", [$slider value]*[[[$piece container] value] floatValue]], NO, kCTLineBreakByTruncatingTail, kCTRightTextAlignment);
 	DrawFramesetter(context, gradeFramesetter, CGRectMake(rect.size.width - PieChartSliderView_DiffWidth + 5.f, rect.size.height/2, PieChartSliderView_DiffWidth - 10.f, rect.size.height/2));
 	CFRelease(gradeFramesetter);
 	
@@ -1004,9 +1022,18 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		NSLog(@"INITIALIZING VIEW");
 		CGFloat totalAngle = 0.f;
 		
+		CGFloat firstPercentageSum = 0;
 		for (PieChartPiece *piece in pieces) {
+			if (firstPercentageSum + [piece percentage] > 100) {
+				// we do this so an unshown bonus grade doesn't fuck up the cool centralized angle.
+				totalAngle += deg2rad(-((100-firstPercentageSum) * 360.f / 100.f));
+				break;
+			}
+
 			CGFloat angle = deg2rad(-([piece percentage] * 360.f / 100.f));
 			totalAngle += angle;
+
+			firstPercentageSum += [piece percentage];
 		}
 		
 		CGPoint center = CGPointMake(($radius*2 + kPieChartViewInset*2)/2, ($radius*2 + kPieChartViewInset*2)/2);
@@ -1016,7 +1043,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		
 		CGFloat pieChartSliderOrigin = 2.f;
 		for (PieChartPiece *piece in pieces) {			
-			CGFloat deg = [piece percentage] * 360.f / 100.f; // TODO: Make this radians already?
+			CGFloat percentage = [piece isBonus] && percentageSum+[piece percentage]>100 ? 100-percentageSum : [piece percentage];
+			CGFloat deg = percentage * 360.f / 100.f; // TODO: Make this radians already?
 			
 			CGMutablePathRef path = CGPathCreateMutable();
 			CGPathMoveToPoint(path, NULL, center.x, center.y);
@@ -1031,7 +1059,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			[layer release];
 
 			CGPathRelease(path);
-			percentageSum += [piece percentage];
+			percentageSum += percentage;
 
 			PieChartSliderView *sliderView = [[PieChartSliderView alloc] initWithFrame:CGRectMake(kPieChartViewInset*3 + $radius*2, pieChartSliderOrigin, [self bounds].size.width - (kPieChartViewInset*3 + $radius*2), 40.f) piece:piece];
 			pieChartSliderOrigin += 40.f;
@@ -1040,8 +1068,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			[sliderView release];
 		}
 		$percentageSum = percentageSum;
-		
-		if ($emptyPiece != nil) {
+
+		if ($emptyPiece != nil && percentageSum < 100) {
 			[$emptyPiece setPercentage:100.f - percentageSum];
 			CGFloat deg = [empty percentage] * 360.f / 100.f;
 			
@@ -1064,14 +1092,36 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return self;
 }
 
+- (void)updateBonusSliders {
+	NSArray *subviews = [self subviews];
+	for (PieChartSliderView *slider in subviews) {
+		if (![slider isKindOfClass:[PieChartSliderView class]]) continue;
+		if ([[slider piece] isBonus]) {
+			[[slider slider] setValue:[[[[slider piece] container] grade] floatValue] / [[[[slider piece] container] value] floatValue] animated:YES];
+			[slider sliderDidSlide:[slider slider]];
+		}
+	}
+}
+
 - (void)pieChartSliderView:(PieChartSliderView *)sliderView didSlideWithValue:(float)value {
 	PieChartPiece *sliderPiece = [sliderView piece];
-	[sliderPiece setPercentage:value * [[[sliderPiece container] value] floatValue] * [[sliderPiece container] weight] / [[[sliderPiece container] superContainer] totalWeight] * 10.f];
+	if ([sliderPiece isBonus])
+		[sliderPiece setPercentage:value * [[[sliderPiece container] value] floatValue] * 10.f];
+	else
+		[sliderPiece setPercentage:value * [[[sliderPiece container] value] floatValue] * [[sliderPiece container] weight] / [[[sliderPiece container] superContainer] totalWeight] * 10.f];
 
 	CGFloat totalAngle = 0.f;
+	CGFloat firstPercentageSum = 0;
 	for (PieChartPiece *piece in $pieces) {
+		if (firstPercentageSum+[piece percentage] > 100) {
+			totalAngle += deg2rad(-((100-firstPercentageSum) * 360.f / 100.f));
+			break;
+		}
+
 		CGFloat angle = deg2rad(-([piece percentage] * 360.f / 100.f));
 		totalAngle += angle;
+		
+		firstPercentageSum += [piece percentage];
 	}
 	
 	CGPoint center = CGPointMake(($radius*2 + kPieChartViewInset*2)/2, ($radius*2 + kPieChartViewInset*2)/2);
@@ -1080,7 +1130,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CGFloat percentageSum = 0;
 
 	for (PieChartPiece *piece in $pieces) {
-		CGFloat deg = [piece percentage] * 360.f / 100.f;
+		CGFloat percentage = [piece isBonus] && percentageSum+[piece percentage]>100 ? 100-percentageSum : [piece percentage];
+		CGFloat deg = percentage * 360.f / 100.f; // TODO: Make this radians already?
 
 		CGMutablePathRef path = CGPathCreateMutable();
 		CGPathMoveToPoint(path, NULL, center.x, center.y);
@@ -1092,7 +1143,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[layer setPath:path];
 		CGPathRelease(path);
 
-		percentageSum += [piece percentage];
+		percentageSum += percentage;
 	}
 	$percentageSum = percentageSum;
 
@@ -2639,8 +2690,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 // Yay averages.
 // This is a node.
 // GradeContainer sounds better than GradeNode.
+// TODO: Make it impossible for Bonus Containers to call inappropriate methods 'by mistake'. Same for $NoGraders.
 @implementation GradeContainer
-@synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer, isBonus;
+@synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer, isBonus, section;
 
 - (id)init {
 	if ((self = [super init])) {
@@ -2759,8 +2811,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 // FIXME: Review ranges on both classes.
 @implementation SubjectTableHeaderView
 - (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
-	NSLog(@"hi wtf you thinkin %@", [[self container] name]);
-
 	CGFloat zoneWidth2 = rect.size.width/4;
 	
 	NSString *gradeString__ = [[[self container] grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [[self container] grade];
@@ -2872,11 +2922,123 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 @end
 
+#define TEXTFIELD_CENTER_HEIGHT_FIX 2.f
+@implementation SubjectBonusTableHeaderView
+- (id)initWithFrame:(CGRect)rect {
+	if ((self = [super initWithFrame:rect])) {
+		NSLog(@"VIEW RECT %@", NSStringFromCGRect(rect));
+
+		$textField = [[UITextField alloc] initWithFrame:CGRectMake(rect.size.width/2 + rect.size.width/4, rect.size.height/2 - TEXTFIELD_CENTER_HEIGHT_FIX, rect.size.width/4, rect.size.height/2)];
+		[$textField setPlaceholder:@"1.00"];
+		[$textField setFont:[UIFont boldSystemFontOfSize:pxtopt(rect.size.height/2)]];
+		[$textField setTextAlignment:NSTextAlignmentCenter];
+		[$textField setContentVerticalAlignment:UIControlContentVerticalAlignmentCenter];
+		[$textField setDelegate:self];
+		[self addSubview:$textField];
+	}
+	
+	return self;
+}
+
+- (void)setContainer:(GradeContainer *)container {
+	// FIXME!!!!! Instead of using name use the id (which would be like Atv1, Atv2...)
+	// NOTE: We call NSUserDefaults and not [[self container] value] because value has 1.0 as value so we couldn't tell whether it was real or the placeholder.
+	NSString *text = [[NSUserDefaults standardUserDefaults] stringForKey:[[NSString stringWithFormat:@"BonusValue:%@:%@", [[container superContainer] name], [container name]] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale]];
+	NSLog(@"key ended up as %@, and text as %@", [[NSString stringWithFormat:@"BonusValue:%@:%@", [[container superContainer] name], [container name]] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale], text);
+	[$textField setText:[text length] > 0 ? text : nil];
+        
+        [super setContainer:container];
+}
+
+- (UITableView *)$tableView {
+	UIView *tableView = self;
+	while (![tableView isKindOfClass:[UITableView class]]) tableView = [tableView superview];
+
+	return (UITableView *)tableView;
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];		
+}
+
+- (void)keyboardWillShow:(NSNotification *)notification {
+	UITableView *tableView = [self $tableView];
+
+	CGFloat height = [[[notification userInfo] objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue].size.height;
+	NSTimeInterval duration = [[[notification userInfo] objectForKey:UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+	
+	UIEdgeInsets edgeInsets = UIEdgeInsetsMake(0, 0, height - HEIGHT_OF_TABBAR, 0);
+	[UIView animateWithDuration:duration animations:^{
+		[tableView setContentInset:edgeInsets];
+		[tableView setScrollIndicatorInsets:edgeInsets];
+		[tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:NSNotFound inSection:[[self container] section]] atScrollPosition:UITableViewScrollPositionTop animated:YES];
+	}];
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification {
+	UITableView *tableView = [self $tableView];
+	
+        NSTimeInterval duration = [[[notification userInfo] objectForKey:UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+
+	[UIView animateWithDuration:duration animations:^{
+		[tableView setContentInset:UIEdgeInsetsZero];
+		[tableView setScrollIndicatorInsets:UIEdgeInsetsZero];
+	}];
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField {
+	NSString *text = [[textField text] americanFloat];
+	if ([text floatValue] == 0 || [text floatValue] < [[[self container] grade] floatValue]) text = [NSString string];
+	else {
+		text = [NSString stringWithFormat:@"%.2f", [text floatValue]];
+
+		[[self container] setValue:text];
+
+		UIView *subjectView = self;
+		while (![subjectView isKindOfClass:[SubjectView class]]) subjectView = [subjectView superview];
+		[(PieChartView *)[subjectView viewWithTag:500] updateBonusSliders];
+	}
+	
+	[textField setText:[text isEqualToString:[NSString string]] ? nil : text];
+	[[NSUserDefaults standardUserDefaults] setObject:text forKey:[[NSString stringWithFormat:@"BonusValue:%@:%@", [[[self container] superContainer] name], [[self container] name]] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale]];
+	[[NSUserDefaults standardUserDefaults] synchronize];
+	
+	[[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillShowNotification object:nil];
+	[[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillHideNotification object:nil];
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+	[textField resignFirstResponder];
+	return YES;
+}
+
+- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
+	CGFloat zoneWidth2 = rect.size.width / 2;
+	NSLog(@"zoneWidth2 = %f; rect.size.width = %f", zoneWidth2, rect.size.width);
+	
+	NSString *gradeString__ = [[[self container] grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [[self container] grade];
+	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
+	
+	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
+	CFAttributedStringRemoveAttribute(gradeString, gradeContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(gradeString, gradeContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(gradeString_);
+	
+	CTFramesetterRef gradeFramesetter = CTFramesetterCreateWithAttributedString(gradeString); CFRelease(gradeString);
+	CTFramesetterRef valueFramesetter = CreateFramesetter(dataFont, textColor, CFSTR("Valor\n"), NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+
+	DrawFramesetter(context, gradeFramesetter, CGRectMake(rect.origin.x, 0.f, zoneWidth2, rect.size.height)); CFRelease(gradeFramesetter);
+	DrawFramesetter(context, valueFramesetter, CGRectMake(rect.origin.x + zoneWidth2, 0.f, zoneWidth2, rect.size.height)); CFRelease(valueFramesetter);
+}
+@end
+
 @implementation TestView
 @synthesize container;
 
 - (void)drawRect:(CGRect)rect {
-	NSLog(@"-[TestView drawRect:%@] with %@", NSStringFromCGRect(rect), NSStringFromClass([self class]));
+	//NSLog(@"-[TestView drawRect:%@] with %@", NSStringFromCGRect(rect), NSStringFromClass([self class]));
 	
 	CGContextRef context = UIGraphicsGetCurrentContext();
 	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
@@ -2891,7 +3053,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CGContextFillRect(context, rect);
 	
 	CGFloat zoneHeight = rect.size.height/2;
-	CGFloat zoneWidth = [container isBonus] ? rect.size.width : rect.size.width/3;
+	CGFloat zoneWidth = [container isBonus] ? rect.size.width/2 : rect.size.width/3;
 	
 	// ZONE 1
 	UIColor *colorForGrade = [[container grade] isEqualToString:@"$NoGrade"] || [container isBonus] ? UIColorFromHexWithAlpha(0x708090, 1.f) : ColorForGrade([container $gradePercentage]/10.f);
@@ -2918,19 +3080,17 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	
 	DrawFramesetter(context, fpGradeFramesetter, CGRectMake(examRect.origin.x + examRect.size.width, zoneHeight/2, gradeRequirement.width, zoneHeight));
 	CFRelease(fpGradeFramesetter);
+
+	// ZONE 2
+	[self drawDataZoneRect:CGRectMake(zoneWidth, 0.f, zoneWidth, rect.size.height) textColor:textColor dataFont:dataFont boldFont:boldFont inContext:context];
 	
 	if ([container isBonus]) {
 		CFRelease(dataFont);
 		CFRelease(boldFont);
 		
-		NSLog(@"im bonus bye");
 		return;
 	}
 
-	// ZONE 2
-	NSLog(@"we callin this for bonus %d and name supposedly %@", [container isBonus], [container name]);
-	[self drawDataZoneRect:CGRectMake(zoneWidth, 0.f, zoneWidth, rect.size.height) textColor:textColor dataFont:dataFont boldFont:boldFont inContext:context];
-	
 	// ZONE 3
 	CTFramesetterRef gradeLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Nota"), NO, kCTLineBreakByTruncatingTail);
 	CTFramesetterRef averageLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Média"), NO, kCTLineBreakByTruncatingTail);
@@ -2976,6 +3136,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CFRelease(boldFont);
 }
 
+- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
+	return;
+}
+
 - (void)dealloc {
 	[container release];
 	[super dealloc];
@@ -2996,6 +3160,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[tableView release];
 		
 		// FIXME: Use CoreText instead of attributed UILabels.
+		// (I'm asking myself why I did those in the first place.)
 		UIView *tableHeaderView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 54.f)];
 		CGFloat halfHeight = [tableHeaderView bounds].size.height/2;
 		
@@ -3048,6 +3213,17 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			[piece setContainer:subContainer];
 			[piece setColor:RandomColorHex()];
 			[piece setText:[subContainer name]];
+			[piece setIsBonus:NO];
+
+			[pieces addObject:piece];
+		}
+		for (GradeContainer *bonusContainer in [$container subBonusContainers]) {
+			PieChartPiece *piece = [[[PieChartPiece alloc] init] autorelease];
+			[piece setPercentage:[[bonusContainer grade] floatValue] * 10.f];
+			[piece setContainer:bonusContainer];
+			[piece setColor:RandomColorHex()];
+			[piece setText:[bonusContainer name]];
+			[piece setIsBonus:YES];
 
 			[pieces addObject:piece];
 		}
@@ -3060,6 +3236,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		CGFloat rowsHeight = [pieces count] * [PieChartView rowHeight];
 		CGFloat minHeight = [PieChartView minHeightForRadius:55.f];
 		PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, rowsHeight < minHeight ? minHeight : rowsHeight) pieces:pieces count:[[$container subGradeContainers] count] radius:55.f emptyPiece:emptyPiece];
+		[mainPieChart setTag:500];
 		[mainPieChart setDelegate:self];
 		
 		UIView *footerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, [mainPieChart bounds].size.height)];
@@ -3123,15 +3300,16 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	GradeContainer *container;
 	if (section >= [[$container subGradeContainers] count]) {
 		container = [[$container subBonusContainers] objectAtIndex:section - [[$container subGradeContainers] count]];
-		headerViewClass = [TestView class];
+		headerViewClass = [SubjectBonusTableHeaderView class];
 	}
 	else {
 		container = [[$container subGradeContainers] objectAtIndex:section];
 		headerViewClass = [SubjectTableHeaderView class];
 	}
+	[container setSection:section];
 	
 	UIScrollView *scrollView = [[[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, 44.f)] autorelease];
-	[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * ([container isBonus] ? 1 : 3), scrollView.bounds.size.height)];
+	[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * ([container isBonus] ? 2 : 3), scrollView.bounds.size.height)];
 	[scrollView setScrollsToTop:NO]; 
 	[scrollView setShowsHorizontalScrollIndicator:NO];
 	[scrollView setPagingEnabled:YES];
@@ -3314,19 +3492,25 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 				GradeContainer *bonusContainer = [[[GradeContainer alloc] init] autorelease];
 				[bonusContainer setSuperContainer:subjectContainer];
 				[bonusContainer setDebugLevel:2];
-				
-				[bonusContainer makeValueTen]; // when we get the percentage we'll be sure it's the whole grade's
 				[bonusContainer setAverage:@"$NoGrade"];
 				[bonusContainer setWeight:-1];
 				[bonusContainer setIsBonus:YES];
 
 				NSString *subsectionName = [[subsection firstElementMatchingPath:@"./td[2]"] content];
 				NSArray *split = [subsectionName componentsSeparatedByString:@" - "];
-				[bonusContainer setName:[@"Bônus " stringByAppendingString:[split objectAtIndex:1]]];
+				NSString *prepend = [[split objectAtIndex:1] rangeOfString:@"bonus" options:NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch].location == NSNotFound ? @"Bônus " : @"";
+				NSString *finalName = [prepend stringByAppendingString:[split objectAtIndex:1]];
+				[bonusContainer setName:finalName];
 
 				NSString *subsectionGrade = [[subsection firstElementMatchingPath:@"./td[3]"] content];
 				if (![subsectionGrade isGrade]) subsectionGrade = @"$NoGrade";
 				[bonusContainer setGrade:[subsectionGrade americanFloat]];
+				
+				NSString *valueText = [[NSUserDefaults standardUserDefaults] stringForKey:[[NSString stringWithFormat:@"BonusValue:%@:%@", subjectName, finalName] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale]];
+				NSLog(@"FINAL IS %@", finalName);
+				NSLog(@"supposedly key %@ has value %@", [[NSString stringWithFormat:@"BonusValue:%@:%@", subjectName, finalName] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale], valueText);
+				[bonusContainer setValue:[valueText length] > 0 ? valueText : @"1.00"];
+				NSLog(@"bc %@", [bonusContainer value]);
 
 				[subBonusContainers addObject:bonusContainer];
 			}

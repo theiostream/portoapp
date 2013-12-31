@@ -6,6 +6,7 @@
  no rights whatsoever to the Fundação Visconde de Porto Seguro
  
  Licensed under the GNU General Public License version 3.
+ Because I don't want my work stolen.
  */
 
 /* Credits {{{
@@ -89,8 +90,10 @@ Code taken from third parties:
 /* }}} */
 
 /* Helpers {{{ */
+// This is usually either quick functions written by me or stuff taken from StackOverflow :)
 
 /* URL Encoding {{{ */
+// Written by theiostream
 static NSString *NSStringURLEncode(NSString *string) {
 	return [(NSString *)CFURLCreateStringByAddingPercentEscapes(NULL, (CFStringRef)string, NULL, CFSTR("!*'();:@&;=+$,/%?#[]"), kCFStringEncodingUTF8) autorelease];
 }
@@ -101,6 +104,7 @@ static NSString *NSStringURLDecode(NSString *string) {
 /* }}} */
 
 /* Unescaping HTML {{{ */
+// Found on StackOverflow.
 static NSString *RemoveHTMLTags(NSString *content) {
 	NSString *newString = [[content copy] autorelease];
 	
@@ -120,7 +124,7 @@ static NSString *ParseNewsParagraph(NSString *paragraph) {
 /* }}} */
 
 /* Caching {{{ */
-
+// A pretty lame cache written by theiostream
 static NSMutableDictionary *cache = nil;
 static inline void InitCache() { cache = [[NSMutableDictionary alloc] init]; }
 static inline id Cached(NSString *key) { return [cache objectForKey:key]; }
@@ -129,6 +133,7 @@ static inline void Cache(NSString *key, id object) { [cache setObject:object for
 /* }}} */
 
 /* Pair {{{ */
+// Pair class written by theiostream
 
 @interface Pair : NSObject {
 @public
@@ -163,6 +168,7 @@ static inline void Cache(NSString *key, id object) { [cache setObject:object for
 /* }}} */
 
 /* CoreText {{{ */
+// CoreText helpers written by theiostream
 
 /* Some history on these functions:
 ./2013-09-18.txt:[18:11:35] <@theiostream> i'm using coretext
@@ -226,6 +232,7 @@ static void DrawFramesetter(CGContextRef context, CTFramesetterRef framesetter, 
 /* }}} */
 
 /* Colors {{{ */
+// Taken from StackOverflow
 
 // I wrote this!
 // (and finally put bitwise operation knowledge to use)
@@ -296,6 +303,49 @@ static CGRect FixViewBounds(CGRect bounds) {
 
 	return bounds;
 }
+
+/* }}} */
+
+/* Cool Button Delay Scroll View {{{ */
+// Taken from http://stackoverflow.com/questions/3642547/uibutton-touch-is-delayed-when-in-uiscrollview
+
+#define kNoDelayButtonTag 77
+
+@interface NoButtonDelayScrollView : UIScrollView
+@end
+
+@implementation NoButtonDelayScrollView
+- (id)initWithFrame:(CGRect)frame {
+	if ((self = [super initWithFrame:frame])) {
+		[self setDelaysContentTouches:NO];
+	}
+
+	return self;
+}
+
+- (BOOL)touchesShouldCancelInContentView:(UIView *)view {
+	if ([view isKindOfClass:[UIButton class]]) return YES;
+	return [super touchesShouldCancelInContentView:view];
+}
+@end
+
+@interface NoButtonDelayTableView : UITableView
+@end
+
+@implementation NoButtonDelayTableView
+- (id)initWithFrame:(CGRect)frame style:(UITableViewStyle)style {
+	if ((self = [super initWithFrame:frame style:style])) {
+		[self setDelaysContentTouches:NO];
+	}
+
+	return self;
+}
+
+- (BOOL)touchesShouldCancelInContentView:(UIView *)view {
+	if ([view isKindOfClass:[UIButton class]]) return YES;
+	return [super touchesShouldCancelInContentView:view];
+}
+@end
 
 /* }}} */
 
@@ -396,9 +446,22 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* Pie Chart View {{{ */
 
 @class GradeContainer;
+@class PieChartView;
+
+// i don't like iOS 7
+@interface PickerActionSheet : UIView {
+	PieChartView *$pieChartView;
+	UILabel *$subtitleLabel;
+}
+- (id)initWithHeight:(CGFloat)height pieChartView:(PieChartView *)pieChartView;
+- (void)display;
+- (void)dismiss;
+- (void)setSubtitleLabelText:(NSString *)text;
+@end
 
 #define deg2rad(deg) (deg * (M_PI/180.f))
 #define rad2deg(rad) (rad * (180.f/M_PI))
+#define kPickerViewHeight 216.f
 
 @interface PieChartPiece : NSObject
 @property(nonatomic, assign) CGFloat percentage;
@@ -434,15 +497,20 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @end
 
 @protocol PieChartViewDelegate;
-@interface PieChartView : UIView <PieChartSliderViewDelegate> {
+@interface PieChartView : UIView <PieChartSliderViewDelegate, UIPickerViewDelegate, UIPickerViewDataSource> {
 	PieChartPiece *$emptyPiece;
 	NSMutableArray *$pieces;
 	CGFloat $radius;
 
 	NSInteger $percentageSum;
+	
+	UIButton *$addGradeButton;
+	PickerActionSheet *$pickerSheet;
+	NSInteger *$rowMap;
+	NSInteger $selectedContainerType;
 }
 @property(nonatomic, assign) id<PieChartViewDelegate> delegate;
-
++ (CGFloat)extraHeight;
 - (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count radius:(CGFloat)radius emptyPiece:(PieChartPiece *)empty;
 - (void)updateBonusSliders;
 @end
@@ -644,8 +712,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @property(nonatomic, retain) NSString *average;
 @property(nonatomic, assign) NSInteger weight;
 
-@property(nonatomic, retain) NSArray *subGradeContainers;
-@property(nonatomic, retain) NSArray *subBonusContainers;
+@property(nonatomic, retain) NSMutableArray *subGradeContainers;
+@property(nonatomic, retain) NSMutableArray *subBonusContainers;
 @property(nonatomic, retain) GradeContainer *superContainer;
 
 @property(nonatomic, assign) BOOL isBonus;
@@ -881,7 +949,114 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* }}} */
 
+// URGENT FIXME: Don't have repeated views. Maybe reuse at least the PickerActionSheet?
+
 /* Pie Chart View {{{ */
+
+#define kPickerActionSheetSpaceAboveBottom 5.f
+@implementation PickerActionSheet
+- (id)initWithHeight:(CGFloat)height pieChartView:(PieChartView *)pieChartView {
+        UIWindow *keyWindow = [[UIApplication sharedApplication] keyWindow];
+        if ((self = [super initWithFrame:CGRectMake(5.f, [keyWindow bounds].size.height, [keyWindow bounds].size.width - 10.f, height)])) {
+		$pieChartView = pieChartView;
+
+		[self setBackgroundColor:[UIColor whiteColor]];
+		[[self layer] setMasksToBounds:NO];
+		[[self layer] setCornerRadius:8];
+
+		UIPickerView *pickerView = [[UIPickerView alloc] initWithFrame:CGRectMake(0.f, HEIGHT_OF_NAVBAR, [self bounds].size.width, height - HEIGHT_OF_NAVBAR)];
+		[pickerView setDelegate:pieChartView];
+		[pickerView setDataSource:pieChartView];
+		[pickerView setShowsSelectionIndicator:YES];
+		[pickerView setTag:55];
+		[self addSubview:pickerView];
+		[pickerView release];
+		
+		UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0.f, 0.f, [self bounds].size.width, 2*HEIGHT_OF_NAVBAR/3)];
+		[titleLabel setFont:[UIFont systemFontOfSize:pxtopt(HEIGHT_OF_NAVBAR/2)]];
+		[titleLabel setTextColor:[UIColor blackColor]];
+		[titleLabel setBackgroundColor:[UIColor clearColor]];
+		[titleLabel setText:@"Adicionar Nota"];
+		[titleLabel setTextAlignment:NSTextAlignmentCenter];
+		[self addSubview:titleLabel];
+		[titleLabel release];
+		
+		$subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(0.f, 2*HEIGHT_OF_NAVBAR/3 - 5.f, [self bounds].size.width, HEIGHT_OF_NAVBAR/3)];
+		[$subtitleLabel setFont:[UIFont systemFontOfSize:pxtopt(HEIGHT_OF_NAVBAR/3)]];
+		[$subtitleLabel setTextColor:[UIColor blackColor]];
+		[$subtitleLabel setBackgroundColor:[UIColor clearColor]];
+		[$subtitleLabel setText:@"Selecione o peso."];
+		[$subtitleLabel setTextAlignment:NSTextAlignmentCenter];
+		[self addSubview:$subtitleLabel];
+
+		UISegmentedControl *doneButton = [[UISegmentedControl alloc] initWithItems:[NSArray arrayWithObject:@"OK"]];
+		[doneButton setMomentary:YES];
+		[doneButton setSegmentedControlStyle:UISegmentedControlStyleBar];
+		[doneButton setTintColor:[UIColor blackColor]];
+		[doneButton setFrame:CGRectMake([self bounds].size.width - 55.f, 7.f, 50.f, 30.f)]; // FIXME?
+		[doneButton addTarget:pieChartView action:@selector(doneWithPickerView:) forControlEvents:UIControlEventValueChanged];
+		[self addSubview:doneButton];
+		[doneButton release];
+
+		UISegmentedControl *cancelButton = [[UISegmentedControl alloc] initWithItems:[NSArray arrayWithObject:@"Cancel"]];
+		[cancelButton setMomentary:YES];
+		[cancelButton setSegmentedControlStyle:UISegmentedControlStyleBar];
+		[cancelButton setTintColor:[UIColor blackColor]];
+		[cancelButton setFrame:CGRectMake(5.f, 7.f, 50.f, 30.f)]; // FIXME?
+		[cancelButton addTarget:self action:@selector($dismiss:) forControlEvents:UIControlEventValueChanged];
+		[self addSubview:cancelButton];
+		[cancelButton release];
+
+		[keyWindow addSubview:self];
+	}
+
+	return self;
+}
+
+- (void)setSubtitleLabelText:(NSString *)text {
+	[$subtitleLabel setText:text];
+}
+
+- (void)display {
+	UIView *subjectView = $pieChartView;
+	while (![subjectView isKindOfClass:[SubjectView class]]) subjectView = [subjectView superview];
+	[subjectView setUserInteractionEnabled:NO];
+
+	UIView *endarkenView = [[UIView alloc] initWithFrame:[[[UIApplication sharedApplication] keyWindow] bounds]];
+	[endarkenView setBackgroundColor:[UIColor blackColor]];
+	[endarkenView setAlpha:0.f];
+	[endarkenView setTag:66];
+	[[[UIApplication sharedApplication] keyWindow] insertSubview:endarkenView belowSubview:self];
+	
+	[UIView animateWithDuration:.5f animations:^{
+		[endarkenView setAlpha:.5f];
+		[self setFrame:(CGRect){{[self frame].origin.x, [self frame].origin.y - kPickerActionSheetSpaceAboveBottom - [self frame].size.height}, [self frame].size}];
+	} completion:^(BOOL finished){
+		if (finished) [endarkenView release];
+	}];
+}
+
+- (void)$dismiss:(id)sender { [self dismiss]; }
+- (void)dismiss {
+	UIView *subjectView = $pieChartView;
+	while (![subjectView isKindOfClass:[SubjectView class]]) subjectView = [subjectView superview];
+	[subjectView setUserInteractionEnabled:YES];
+	
+	UIView *endarkenView = [[[UIApplication sharedApplication] keyWindow] viewWithTag:66];
+	
+	[UIView animateWithDuration:.5f animations:^{
+		[self setFrame:CGRectMake([self frame].origin.x, [self frame].origin.y + kPickerActionSheetSpaceAboveBottom + [self frame].size.height, [self frame].size.width, [self frame].size.height)];
+		[endarkenView setAlpha:0.f];
+	} completion:^(BOOL finished){
+		[endarkenView removeFromSuperview];
+	}];
+}
+
+- (void)dealloc {
+	[$subtitleLabel release];
+	[super dealloc];
+}
+@end
 
 @implementation PieChartPiece
 @synthesize percentage, container, color, text, layer, isBonus;
@@ -980,12 +1155,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	DrawFramesetter(context, nameFramesetter, CGRectMake(0.f, 15.f, rect.size.width - PieChartSliderView_DiffWidth, 25.f));
 	CFRelease(nameFramesetter);
 	
-	//CGFloat diff = -(([[[$piece container] grade] floatValue] - [$slider value]*10.f) * [[[$piece container] value] floatValue]/10.f); wtf daniel
+	//CGFloat diff = -(([[[$piece container] grade] floatValue] - [$slider value]*10.f) * [[[$piece container] value] floatValue]/10.f); wtf daniel (seriously, wtf daniel)
 	CGFloat diff = ([$slider value]*[[[$piece container] value] floatValue]) - [[[$piece container] grade] floatValue];
 	CTFramesetterRef changeFramesetter = CreateFramesetter(dataFont, textColor, (CFStringRef)[NSString stringWithFormat:@"%s%.1f", diff>=0?"+":"", diff], NO, kCTLineBreakByTruncatingTail, kCTRightTextAlignment);
 	DrawFramesetter(context, changeFramesetter, CGRectMake(rect.size.width - PieChartSliderView_DiffWidth + 5.f, 0.f, PieChartSliderView_DiffWidth - 10.f, rect.size.height/2));
 	CFRelease(changeFramesetter);
-	
 	CTFramesetterRef gradeFramesetter = CreateFramesetter(boldFont, textColor, (CFStringRef)[NSString stringWithFormat:@"%.2f", [$slider value]*[[[$piece container] value] floatValue]], NO, kCTLineBreakByTruncatingTail, kCTRightTextAlignment);
 	DrawFramesetter(context, gradeFramesetter, CGRectMake(rect.size.width - PieChartSliderView_DiffWidth + 5.f, rect.size.height/2, PieChartSliderView_DiffWidth - 10.f, rect.size.height/2));
 	CFRelease(gradeFramesetter);
@@ -1009,8 +1183,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return 40.f;
 }
 
++ (CGFloat)extraHeight {
+	return 12.f;
+}
+
 + (CGFloat)minHeightForRadius:(CGFloat)radius {
-	return radius*2 + kPieChartViewInset*3 + kGradeTotalFontSize;
+	return radius*2 + kPieChartViewInset*3 + kGradeTotalFontSize + [self extraHeight];
 }
 
 - (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count radius:(CGFloat)radius emptyPiece:(PieChartPiece *)empty {
@@ -1018,6 +1196,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		$pieces = [pieces mutableCopy];
 		$emptyPiece = [empty retain];
 		$radius = radius;
+		$rowMap = (NSInteger *)calloc(2, sizeof(NSInteger));
+		$selectedContainerType = 0;
 		
 		NSLog(@"INITIALIZING VIEW");
 		CGFloat totalAngle = 0.f;
@@ -1062,7 +1242,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 			percentageSum += percentage;
 
 			PieChartSliderView *sliderView = [[PieChartSliderView alloc] initWithFrame:CGRectMake(kPieChartViewInset*3 + $radius*2, pieChartSliderOrigin, [self bounds].size.width - (kPieChartViewInset*3 + $radius*2), 40.f) piece:piece];
-			pieChartSliderOrigin += 40.f;
+			pieChartSliderOrigin += [[self class] rowHeight];
 			[sliderView setDelegate:self];
 			[self addSubview:sliderView];
 			[sliderView release];
@@ -1087,19 +1267,76 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 			CGPathRelease(path);
 		}
+		
+		$addGradeButton = [[UIButton buttonWithType:UIButtonTypeCustom] retain];
+		[$addGradeButton setFrame:CGRectMake(kPieChartViewInset*3 + $radius*2, pieChartSliderOrigin + 2.f, ([self bounds].size.width - (kPieChartViewInset*3 + $radius*2)), [[self class] extraHeight])];
+		[[$addGradeButton titleLabel] setFont:[UIFont systemFontOfSize:pxtopt([[self class] extraHeight])]];
+		[$addGradeButton setTitle:@"Adicionar Nota" forState:UIControlStateNormal];
+		[$addGradeButton setBackgroundColor:[UIColor clearColor]];
+		[$addGradeButton setTitleColor:[$addGradeButton tintColor] forState:UIControlStateNormal];
+		[$addGradeButton setTitleShadowColor:[UIColor blackColor] forState:UIControlStateHighlighted];
+		[$addGradeButton addTarget:self action:@selector(thisIsACoolMethodButIAmSadIAlsoLoveMaximusAndCris:) forControlEvents:UIControlEventTouchUpInside];
+		[self addSubview:$addGradeButton];
+		
+		$pickerSheet = [[PickerActionSheet alloc] initWithHeight:260.f pieChartView:self];
 	}
 
 	return self;
+}
+
+- (void)$addContainer:(GradeContainer *)container {
+	PieChartPiece *piece = [[[PieChartPiece alloc] init] autorelease];
+	[piece setPercentage:[container isBonus] ? [[container grade] floatValue]/[[container value] floatValue] : [container gradeInSupercontainer] * 10.f];
+	[piece setContainer:container];
+	[piece setColor:RandomColorHex()];
+	[piece setText:[container name]];
+	[piece setIsBonus:[container isBonus]];
+	
+	CAShapeLayer *layer = [[CAShapeLayer alloc] init];
+	[layer setFillColor:[UIColorFromHexWithAlpha([piece color], 1.f) CGColor]];
+	[[self layer] addSublayer:layer];
+	[piece setLayer:layer];
+	[layer release];
+	
+	CGFloat pieChartSliderOrigin = [$pieces count] * [[self class] rowHeight];
+	PieChartSliderView *sliderView = [[PieChartSliderView alloc] initWithFrame:CGRectMake(kPieChartViewInset*3 + $radius*2, pieChartSliderOrigin, [self bounds].size.width - (kPieChartViewInset*3 + $radius*2), 40.f) piece:piece];
+	pieChartSliderOrigin += [[self class] rowHeight];
+	[sliderView setDelegate:self];
+	[self addSubview:sliderView];
+	[sliderView release];
+	
+	NSUInteger firstBonusIndex = 0;
+	for (PieChartPiece *piece_ in $pieces) { if ([piece_ isBonus]) { break; } firstBonusIndex++; }
+	
+	// This is important because when calculating the 'extra-bonus' thing we must be sure that
+	// bonuses are always the last pieces (at least internally).
+	[$pieces insertObject:piece atIndex:firstBonusIndex];
+	[self updateBonusSliders];
+
+	//[self pieChartSliderView:sliderView didSlideWithValue:0.f];
+	
+	// URGENT FIXME: There is an insidious bug with this UIButton's tap area positioning etc.
+	[$addGradeButton setFrame:CGRectMake(kPieChartViewInset*3 + $radius*2, pieChartSliderOrigin + 2.f, ([self bounds].size.width - (kPieChartViewInset*3 + $radius*2)), [[self class] extraHeight])];
+	
+	// Partly thanks to http://davidjhinson.wordpress.com/2009/03/24/resizing-a-uitableviews-tableheaderview/
+	// I swear, you need to do this *exactly* like this else shit will happen.
+	// Don't touch this.
+	[self setFrame:(CGRect){[self frame].origin, {[self frame].size.width, MAX(pieChartSliderOrigin + [[self class] extraHeight] + kPieChartViewInset*2, [[self class] minHeightForRadius:$radius])}}];
+	UITableView *tableView = (UITableView *)self;
+	while (![tableView isKindOfClass:[UITableView class]]) tableView = (UITableView *)[tableView superview];
+	[[tableView tableFooterView] setFrame:[self frame]];
+	[tableView setTableFooterView:[tableView tableFooterView]];
 }
 
 - (void)updateBonusSliders {
 	NSArray *subviews = [self subviews];
 	for (PieChartSliderView *slider in subviews) {
 		if (![slider isKindOfClass:[PieChartSliderView class]]) continue;
-		if ([[slider piece] isBonus]) {
+		
+		//if ([[slider piece] isBonus]) {
 			[[slider slider] setValue:[[[[slider piece] container] grade] floatValue] / [[[[slider piece] container] value] floatValue] animated:YES];
 			[slider sliderDidSlide:[slider slider]];
-		}
+		//}
 	}
 }
 
@@ -1128,7 +1365,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	
 	CGFloat startAngle = totalAngle/2;
 	CGFloat percentageSum = 0;
-
+	
 	for (PieChartPiece *piece in $pieces) {
 		CGFloat percentage = [piece isBonus] && percentageSum+[piece percentage]>100 ? 100-percentageSum : [piece percentage];
 		CGFloat deg = percentage * 360.f / 100.f; // TODO: Make this radians already?
@@ -1139,7 +1376,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		startAngle += deg2rad(deg);
 
 		CAShapeLayer *layer = (CAShapeLayer *)[piece layer];
-		// animate?
 		[layer setPath:path];
 		CGPathRelease(path);
 
@@ -1207,9 +1443,74 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CFRelease(framesetter);
 }
 
+- (void)thisIsACoolMethodButIAmSadIAlsoLoveMaximusAndCris:(UIButton *)button {
+	[$pickerSheet display];
+}
+
+- (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)pickerView {
+	return 2;
+}
+
+- (NSInteger)pickerView:(UIPickerView *)pickerView numberOfRowsInComponent:(NSInteger)component {
+	return component==0 ? 2 : ($selectedContainerType == 0 ? 10 : 100);
+}
+
+- (CGFloat)pickerView:(UIPickerView *)pickerView rowHeightForComponent:(NSInteger)component {
+	return 44.f;
+}
+
+- (CGFloat)pickerView:(UIPickerView *)pickerView widthForComponent:(NSInteger)component {
+	return [pickerView bounds].size.width/2;
+}
+
+- (NSString *)pickerView:(UIPickerView *)pickerView titleForRow:(NSInteger)row forComponent:(NSInteger)component {
+	if (component == 0) {
+		return row==0 ? @"Nota" : @"Bônus";
+	}
+
+	if ($selectedContainerType == 0) return [NSString stringWithFormat:@"%d", row + 1];
+	return [NSString stringWithFormat:@"%.2f", (float)((row + 1)/10.f)];
+}
+
+- (void)pickerView:(UIPickerView *)pickerView didSelectRow:(NSInteger)row inComponent:(NSInteger)component {
+	if (component == 0) {
+		$selectedContainerType = row;
+		[pickerView reloadComponent:1];
+
+		[$pickerSheet setSubtitleLabelText:[@"Selecione o " stringByAppendingString:row==0 ? @"peso." : @"valor."]];
+	}
+	else $rowMap[$selectedContainerType] = row;
+}
+
+- (void)doneWithPickerView:(UISegmentedControl *)sender {
+	[$pickerSheet dismiss];
+	
+	GradeContainer *container = [[[GradeContainer alloc] init] autorelease];
+	[container setWeight:$selectedContainerType == 1 ? -1 : ($rowMap[0] + 1)];
+	[container setValue:$selectedContainerType == 1 ? [NSString stringWithFormat:@"%.2f", ($rowMap[1] + 1)/10.f] : @"10.00"];
+	[container setIsBonus:$selectedContainerType == 1];
+	[container setGrade:@"$NoGrade"];
+	[container setAverage:@"$NoGrade"];
+	[container setName:[NSString stringWithFormat:@"%@ (%@ %@)", $selectedContainerType==1 ? @"Bônus" : @"Nota", $selectedContainerType==1 ? @"Valor" : @"Peso", $selectedContainerType==0 ? [NSString stringWithFormat:@"%d", [container weight]] : [container value]]];
+	
+	GradeContainer *superContainer = [[[$pieces objectAtIndex:0] container] superContainer];
+	[$selectedContainerType==1 ? ([superContainer subBonusContainers]) : ([superContainer subGradeContainers]) addObject:container];
+	[container setSuperContainer:[[[$pieces objectAtIndex:0] container] superContainer]];
+	
+	[self $addContainer:container];
+
+	$rowMap[0] = 0;
+	$rowMap[1] = 0;
+	$selectedContainerType = 0;
+}
+
 - (void)dealloc {
 	[$emptyPiece release];
 	[$pieces release];
+	[$pickerSheet release];
+	[$addGradeButton release];
+
+	free($rowMap);
 
 	[super dealloc];
 }
@@ -3153,7 +3454,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		$container = [container retain];
 		[self setBackgroundColor:[UIColor whiteColor]];
 
-		UITableView *tableView = [[UITableView alloc] initWithFrame:[self bounds] style:UITableViewStylePlain];
+		NoButtonDelayTableView *tableView = [[NoButtonDelayTableView alloc] initWithFrame:[self bounds] style:UITableViewStylePlain];
 		[tableView setDataSource:self];
 		[tableView setDelegate:self];
 		[tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
@@ -3234,7 +3535,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[emptyPiece setColor:0x000000];
 		[emptyPiece setText:@"Empty"];
 		
-		CGFloat rowsHeight = [pieces count] * [PieChartView rowHeight];
+		CGFloat rowsHeight = [pieces count] * [PieChartView rowHeight] + ([PieChartView extraHeight] + kPieChartViewInset*2);
 		CGFloat minHeight = [PieChartView minHeightForRadius:55.f];
 		PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, rowsHeight < minHeight ? minHeight : rowsHeight) pieces:pieces count:[[$container subGradeContainers] count] radius:55.f emptyPiece:emptyPiece];
 		[mainPieChart setTag:500];
@@ -3361,7 +3662,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[super reloadData];
 	SessionController *sessionController = [SessionController sharedInstance];
 	
-	//#define READ_FROM_LOCAL_DEBUG_HTML
+	#define READ_FROM_LOCAL_DEBUG_HTML
 	#ifdef READ_FROM_LOCAL_DEBUG_HTML
 	NSData *data = [NSData dataWithContentsOfFile:@"/Users/BobNelson/Documents/Projects/PortoApp/3rdp.html"];
 	#else
@@ -3537,17 +3838,14 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		Cristina Santos: Gostei de ver
 	NSLog(@"%@", $rootContainer); */
         
-        NSLog(@"pre-block!");
 	[self $performUIBlock:^{
 		[self prepareContentView];
 		[self displayContentView];
-		NSLog(@"content view is %@ so wat.", $contentView);
 	}];
-        NSLog(@"meh");
 }
 
 - (void)loadContentView {
-	UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:FixViewBounds([[self view] bounds])/*CGRectMake(0.f, 0.f, [self view].bounds.size.width, 367.f)*/];
+	NoButtonDelayScrollView *scrollView = [[NoButtonDelayScrollView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
 	[scrollView setBackgroundColor:[UIColor whiteColor]];
 	[scrollView setScrollsToTop:NO];
 	[scrollView setPagingEnabled:YES];
@@ -3556,7 +3854,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)prepareContentView {
-	UIScrollView *contentView = (UIScrollView *)$contentView;
+	NoButtonDelayScrollView *contentView = (NoButtonDelayScrollView *)$contentView;
 	NSArray *subjectContainers = [$rootContainer subGradeContainers];
 
 	CGRect subviewRect = CGRectMake(0.f, 0.f, [contentView bounds].size.width, [contentView bounds].size.height);

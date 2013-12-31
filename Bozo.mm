@@ -436,7 +436,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @protocol PieChartViewDelegate;
 @interface PieChartView : UIView <PieChartSliderViewDelegate> {
 	PieChartPiece *$emptyPiece;
-	NSArray *$pieces;
+	NSMutableArray *$pieces;
 	CGFloat $radius;
 
 	NSInteger $percentageSum;
@@ -1015,7 +1015,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count radius:(CGFloat)radius emptyPiece:(PieChartPiece *)empty {
 	if ((self = [super initWithFrame:frame])) {
-		$pieces = [pieces retain];
+		$pieces = [pieces mutableCopy];
 		$emptyPiece = [empty retain];
 		$radius = radius;
 		
@@ -3125,7 +3125,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CGRect gradeBarRect = CGRectMake(xOrigin > baseGraphRect.origin.x ? xOrigin : baseGraphRect.origin.x+2.f, 6.f + baseGraphRect.size.height, requiredWidth, baseGraphRect.size.height);
 	DrawFramesetter(context, gradeBarFramesetter, gradeBarRect); CFRelease(gradeBarFramesetter);
 
-	CTFramesetterRef averageBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)[container average], NO, kCTLineBreakByTruncatingTail);
+	NSString *averageString = [[container average] isEqualToString:@"$NoGrade"] ? @"N/A" : [container average];
+	CTFramesetterRef averageBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)averageString, NO, kCTLineBreakByTruncatingTail);
 	CGFloat requiredWidthAvg = CTFramesetterSuggestFrameSizeWithConstraints(averageBarFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL).width;
 	CGFloat xOriginAvg = baseGraphRect.origin.x + averageBarWidth - requiredWidth - 3.f;
 	CGRect averageBarRect = CGRectMake(xOriginAvg > baseGraphRect.origin.x ? xOriginAvg : baseGraphRect.origin.x+2.f, 2.f, requiredWidthAvg, baseGraphRect.size.height);
@@ -3294,33 +3295,38 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return 44.f;
 }
 
+// TODO: UITableViewHeaderFooterView is iOS6+. I dislike having to rely on apis > iOS 5. :(
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-	// FIXME: no more constant 44.f
-	Class headerViewClass;
-	GradeContainer *container;
-	if (section >= [[$container subGradeContainers] count]) {
-		container = [[$container subBonusContainers] objectAtIndex:section - [[$container subGradeContainers] count]];
-		headerViewClass = [SubjectBonusTableHeaderView class];
-	}
-	else {
-		container = [[$container subGradeContainers] objectAtIndex:section];
-		headerViewClass = [SubjectTableHeaderView class];
-	}
-	[container setSection:section];
-	
-	UIScrollView *scrollView = [[[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, 44.f)] autorelease];
-	[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * ([container isBonus] ? 2 : 3), scrollView.bounds.size.height)];
-	[scrollView setScrollsToTop:NO]; 
-	[scrollView setShowsHorizontalScrollIndicator:NO];
-	[scrollView setPagingEnabled:YES];
-	
-	CGRect frame = CGRectMake(0.f, 0.f, [scrollView contentSize].width, [scrollView contentSize].height);
-        TestView *headerView = [[headerViewClass alloc] initWithFrame:frame];
-	[headerView setContainer:container];
-	[scrollView addSubview:headerView];
-	[headerView release];
+	BOOL isBonus = section >= [[$container subGradeContainers] count];
+	NSString *identifier = isBonus ? @"PortoAppSubjectViewTableHeaderViewBonus" : @"PortoAppSubjectViewTableHeaderViewGrade";
 
-	return scrollView;
+	UITableViewHeaderFooterView *headerView = [tableView dequeueReusableHeaderFooterViewWithIdentifier:identifier];
+	if (headerView == nil) {
+		headerView = [[[UITableViewHeaderFooterView alloc] initWithReuseIdentifier:identifier] autorelease];
+
+		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, 44.f)];
+		[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * (isBonus ? 2 : 3), scrollView.bounds.size.height)];
+		[scrollView setScrollsToTop:NO]; 
+		[scrollView setShowsHorizontalScrollIndicator:NO];
+		[scrollView setPagingEnabled:YES];
+		[scrollView setTag:5];
+
+		Class testViewClass = isBonus ? [SubjectBonusTableHeaderView class] : [SubjectTableHeaderView class];
+		CGRect frame = CGRectMake(0.f, 0.f, [scrollView contentSize].width, [scrollView contentSize].height);
+		TestView *testView = [[testViewClass alloc] initWithFrame:frame];
+		[testView setTag:6];
+		[scrollView addSubview:testView];
+		[testView release];
+		
+		[[headerView contentView] addSubview:scrollView];
+		[scrollView release];
+	}
+	
+	GradeContainer *container = isBonus ? [[$container subBonusContainers] objectAtIndex:section - [[$container subGradeContainers] count]] : [[$container subGradeContainers] objectAtIndex:section];
+	[(TestView *)[[headerView viewWithTag:5] viewWithTag:6] setContainer:container];
+	[(UIScrollView *)[headerView viewWithTag:5] setContentOffset:CGPointMake(0.f, 0.f)];
+	[[[headerView viewWithTag:5] viewWithTag:6] setNeedsDisplay];
+	return headerView;
 }
 
 - (void)dealloc {

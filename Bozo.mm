@@ -3637,6 +3637,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 @end
 
+// URGENT FIXME Add a page control.
 @implementation GradesListViewController
 @synthesize year = $year, period = $period;
 
@@ -3656,6 +3657,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	}
 
 	return self;
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:@"Notas"];
 }
 
 - (void)reloadData {

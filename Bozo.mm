@@ -781,6 +781,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (id)initWithQueue:(dispatch_queue_t)queue newsURL:(NSURL *)newsURL;
 @end
 
+@interface NavigationWebBrowserController : WebViewController {
+	dispatch_queue_t $queue;
+}
+
+- (id)initWithQueue:(dispatch_queue_t)queue;
+@end
+
 @interface NewsTableViewCell : ABTableViewCell {
         UIImage *$newsImage;
         NSString *$newsTitle;
@@ -1969,6 +1976,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* }}} */
 
 /* Web View Controller {{{ */
+// URGENT FIXME: Add some sort of WebDataController-like loading screen while the page's loading.
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wincomplete-implementation"
@@ -2026,6 +2034,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (UIWebView *)webView {
 	return (UIWebView *)[self view];
+}
+
+- (void)webViewDidFinishLoad:(UIWebView *)webView {
+	// Do loading view stuff.
 }
 @end
 
@@ -2631,6 +2643,56 @@ you will still get a valid token for name "Funcionário".
 
 /* News Controller {{{ */
 
+@implementation NavigationWebBrowserController
+- (id)initWithQueue:(dispatch_queue_t)queue {
+	if ((self = [super init])) {
+		dispatch_retain(queue);
+		$queue = queue;
+	}
+
+	return self;
+}
+
+- (void)webViewDidFinishLoad:(UIWebView *)webView {
+	// Perform JavaScript optimizations here.
+	if ([[[[webView request] URL] absoluteString] isEqualToString:@"http://arquivos.portoseguro.org.br/Emails/AconteceNoPorto/AconteceNoPorto.html"]) {
+		[self executeJavascript:@"document.getElementsByTagName('table')[0].setAttribute('style', 'position:absolute;top:0;bottom:0;left:0;right:0;width:100%;height:100%;border:1px;solid');"];
+		[self executeJavascript:@"document.getElementsByTagName('td')[1].setAttribute('align', 'center')"];
+	}
+	else if ([[[[webView request] URL] absoluteString] hasPrefix:@"http://arquivos.portoseguro.org.br/emails"]) {
+		[self executeJavascript:@"document.body.removeChild(document.getElementsByTagName('table')[0]);"];
+		[self executeJavascript:@"document.getElementsByTagName('table')[0].setAttribute('style', 'position:absolute;top:0;bottom:0;left:0;right:0;width:100%;height:100%;border:1px;solid');"];
+	}
+
+	[super webViewDidFinishLoad:webView];
+}
+
+- (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
+	if (navigationType == UIWebViewNavigationTypeLinkClicked) {
+		NSURL *url = [request URL];
+		if (![[url host] isEqualToString:@"www.portoseguro.org.br"] || [[url absoluteString] rangeOfString:@"noticia"].location == NSNotFound) {
+			NavigationWebBrowserController *browser = [[[NavigationWebBrowserController alloc] initWithQueue:$queue] autorelease];
+			[browser loadRequest:request];
+			[[self navigationController] pushViewController:browser animated:YES];
+		}
+		else {
+			NewsArticleWebViewController *article = [[[NewsArticleWebViewController alloc] initWithQueue:$queue newsURL:url] autorelease];
+			[article loadLocalFile:[[NSBundle mainBundle] pathForResource:@"news_base" ofType:@"html"]];
+			[[self navigationController] pushViewController:article animated:YES];
+		}
+		
+		return NO;
+	}
+
+	return YES;
+}
+
+- (void)dealloc {
+	dispatch_release($queue);
+	[super dealloc];
+}
+@end
+
 @implementation NewsArticleWebViewController
 - (id)initWithQueue:(dispatch_queue_t)queue newsURL:(NSURL *)newsURL {
 	if ((self = [super init])) {
@@ -2665,19 +2727,25 @@ you will still get a valid token for name "Funcionário".
 			*/
 			[self executeJavascript:@"var el = document.getElementById('share'); el.style.margin = '0 auto 0 10px';"];
 			[self executeJavascript:@"var el = document.getElementById('share2'); el.style.margin = '0 auto 0 10px';"];
-
+			
+			// FIXME: Come on Daniel, there's a *lot* of room for optimization here.
 			// Thirdly, we optimize the page for a better reading experience.
 			[self executeJavascript:@"var p = document.getElementsByTagName('p'); for(i=0; i<p.length; i++) { p[i].style.fontSize='28px'; p[i].style.lineHeight='1.5'; }"];
 			/* " do not remove this comment else vim will get mad. */
 			[self executeJavascript:@"var el = document.getElementsByTagName('h2')[0]; el.style.fontSize='48px';"];
 			[self executeJavascript:@"var el = document.getElementsByTagName('h4')[0]; el.style.fontSize='54px';"];
+
+			[super webViewDidFinishLoad:webView];			
 		});
 	});
 }
 
 - (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
 	if (navigationType == UIWebViewNavigationTypeLinkClicked) {
-		[[UIApplication sharedApplication] openURL:[request URL]];
+		NavigationWebBrowserController *controller = [[[NavigationWebBrowserController alloc] initWithQueue:$queue] autorelease];
+		[controller loadRequest:request];
+		[[self navigationController] pushViewController:controller animated:YES];
+
 		return NO;
 	}
 
@@ -2918,10 +2986,16 @@ you will still get a valid token for name "Funcionário".
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	NSString *link = [[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Link"];
-
-	NewsArticleWebViewController *controller = [[[NewsArticleWebViewController alloc] initWithQueue:$queue newsURL:[NSURL URLWithString:link]] autorelease];
-	[controller loadLocalFile:[[NSBundle mainBundle] pathForResource:@"news_base" ofType:@"html"]];
-	[[self navigationController] pushViewController:controller animated:YES];
+	if (![link isEqualToString:@"$AconteceNoPorto"]) {
+		NewsArticleWebViewController *controller = [[[NewsArticleWebViewController alloc] initWithQueue:$queue newsURL:[NSURL URLWithString:link]] autorelease];
+		[controller loadLocalFile:[[NSBundle mainBundle] pathForResource:@"news_base" ofType:@"html"]];
+		[[self navigationController] pushViewController:controller animated:YES];
+	}
+	else {
+		NavigationWebBrowserController *controller = [[[NavigationWebBrowserController alloc] initWithQueue:$queue] autorelease];
+		[controller loadPage:@"http://arquivos.portoseguro.org.br/Emails/AconteceNoPorto/AconteceNoPorto.html"];
+		[[self navigationController] pushViewController:controller animated:YES];
+	}
 
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 }

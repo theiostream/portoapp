@@ -667,7 +667,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Web View Controller {{{ */
 
-@interface WebViewController : UIViewController <UIWebViewDelegate>
+@interface WebViewController : UIViewController <UIWebViewDelegate> {
+	UIWebView *$webView;
+	LoadingIndicatorView *$loadingView;
+}
 - (void)loadPage:(NSString *)page;
 - (void)loadURL:(NSURL *)url;
 - (void)loadLocalFile:(NSString *)file;
@@ -1986,32 +1989,34 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 // Thanks Conrad.
 - (BOOL)shouldForwardSelector:(SEL)aSelector {
-	return (![[[self webView] superclass] instancesRespondToSelector:aSelector] && [[self webView] respondsToSelector:aSelector]);
+	return (![[$webView superclass] instancesRespondToSelector:aSelector] && [$webView respondsToSelector:aSelector]);
 }
 
 - (id)forwardingTargetForSelector:(SEL)aSelector {
-	return (![self respondsToSelector:aSelector] && [self shouldForwardSelector:aSelector]) ? [self webView] : self;
+	[self view];
+	return (![self respondsToSelector:aSelector] && [self shouldForwardSelector:aSelector]) ? $webView : self;
 }
 
 - (void)loadView {
-	UIWebView *webView = [[UIWebView alloc] initWithFrame:CGRectZero];
-	[webView setScalesPageToFit:YES];
-	[webView setDelegate:self];
-	[self setView:webView];
-	[webView release];
+	[super loadView];
+	
+	$webView = [[UIWebView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
+	[$webView setScalesPageToFit:YES];
+	[$webView setDelegate:self];
+	[$webView setHidden:YES];
+	[[self view] addSubview:$webView];
+
+	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
+	[[self view] addSubview:$loadingView];
 }
 
 - (void)viewDidLoad {
         [super viewDidLoad];
-        if (SYSTEM_VERSION_GT_EQ(@"7.0"))
+        
+	if (SYSTEM_VERSION_GT_EQ(@"7.0"))
                 [self setAutomaticallyAdjustsScrollViewInsets:NO];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-	[super viewWillAppear:animated];
-	[UIView animateWithDuration:.1f animations:^{
-                [[self webView] setFrame:PerfectFrameForViewController(self)];
-        }];
+	
+	[[$loadingView activityIndicatorView] startAnimating];
 }
 
 - (void)loadURL:(NSURL *)pageURL {
@@ -2033,11 +2038,21 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (UIWebView *)webView {
-	return (UIWebView *)[self view];
+	return $webView;
 }
 
 - (void)webViewDidFinishLoad:(UIWebView *)webView {
-	// Do loading view stuff.
+	[$loadingView setHidden:YES];
+	[[$loadingView activityIndicatorView] stopAnimating];
+
+	[[self webView] setHidden:NO];
+}
+
+- (void)dealloc {
+	[$webView release];
+	[$loadingView release];
+	
+	[super dealloc];
 }
 @end
 

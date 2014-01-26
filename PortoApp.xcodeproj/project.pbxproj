@@ -25,6 +25,8 @@
 		EDB4082317E25FA600521640 /* Bozo.mm in Sources */ = {isa = PBXBuildFile; fileRef = EDB4082217E25FA600521640 /* Bozo.mm */; };
 		EDBFFDD517E926A800C393D5 /* libxml2.2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */; };
 		EDD1A9F717E7C27B00AA26CF /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDD1A9F617E7C27B00AA26CF /* Security.framework */; };
+		EDEFF75A1889E1CD00FB7B2A /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = EDEFF7591889E1CD00FB7B2A /* parser.c */; };
+		EDEFF75C1889FE3C00FB7B2A /* libb64.a in Frameworks */ = {isa = PBXBuildFile; fileRef = EDEFF75B1889FE3C00FB7B2A /* libb64.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +52,8 @@
 		EDB4082217E25FA600521640 /* Bozo.mm */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.cpp.objcpp; path = Bozo.mm; sourceTree = "<group>"; tabWidth = 8; };
 		EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.2.dylib; path = usr/lib/libxml2.2.dylib; sourceTree = SDKROOT; };
 		EDD1A9F617E7C27B00AA26CF /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		EDEFF7591889E1CD00FB7B2A /* parser.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = parser.c; path = viewstate/parser.c; sourceTree = "<group>"; };
+		EDEFF75B1889FE3C00FB7B2A /* libb64.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libb64.a; path = ../../../../../usr/local/lib/libb64.a; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,6 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EDEFF75C1889FE3C00FB7B2A /* libb64.a in Frameworks */,
 				ED041D021832BF4E007D2CEC /* QuartzCore.framework in Frameworks */,
 				ED8DD83417EA2B0800864BFA /* CoreText.framework in Frameworks */,
 				EDBFFDD517E926A800C393D5 /* libxml2.2.dylib in Frameworks */,
@@ -84,6 +89,7 @@
 		EDB407F817E25F7500521640 = {
 			isa = PBXGroup;
 			children = (
+				EDEFF7591889E1CD00FB7B2A /* parser.c */,
 				EDB4082117E25FA600521640 /* Bozo.h */,
 				EDB4082217E25FA600521640 /* Bozo.mm */,
 				EDB4080A17E25F7500521640 /* PortoApp */,
@@ -103,6 +109,7 @@
 		EDB4080317E25F7500521640 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				EDEFF75B1889FE3C00FB7B2A /* libb64.a */,
 				ED8DD83317EA2B0800864BFA /* CoreText.framework */,
 				ED041D011832BF4E007D2CEC /* QuartzCore.framework */,
 				EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */,
@@ -226,6 +233,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EDEFF75A1889E1CD00FB7B2A /* parser.c in Sources */,
 				EDB4082317E25FA600521640 /* Bozo.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -301,12 +309,18 @@
 		EDB4081F17E25F7500521640 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = YES;
 				CODE_SIGN_IDENTITY = "";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
-				HEADER_SEARCH_PATHS = "~/theos/include";
+				HEADER_SEARCH_PATHS = (
+					/usr/local/include,
+					"~/theos/include",
+				);
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
+				OTHER_CFLAGS = "-I/usr/local/include";
+				OTHER_LDFLAGS = "-L/usr/local/lib";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos7.0;
 				WRAPPER_EXTENSION = app;
@@ -316,12 +330,18 @@
 		EDB4082017E25F7500521640 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = YES;
 				CODE_SIGN_IDENTITY = "";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
-				HEADER_SEARCH_PATHS = "~/theos/include";
+				HEADER_SEARCH_PATHS = (
+					/usr/local/include,
+					"~/theos/include",
+				);
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
+				OTHER_CFLAGS = "-I/usr/local/include";
+				OTHER_LDFLAGS = "-L/usr/local/lib";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos7.0;
 				WRAPPER_EXTENSION = app;

@@ -9,11 +9,16 @@
  Because I don't want my work stolen.
  */
 
+// Tips!
+// [23:41:33] <@DHowett> theiostream: At the top of the function, get 'self.bounds' out into a local variable. each time you call it is a dynamic dispatch because the compiler cannot assume that it has no side-effects
+// [23:42:13] <@DHowett> theiostream: the attributed strings and their CTFrameshit should be cached whenver possible. do not create a new attributed string every time the rect is drawn
+
 /* Credits {{{
 
 Personal thanks:
 - Dustin Howett
 - Guilherme (Lima) Stark
+- Lucas Zamprogno
 - Max Shavrick
 - Natham Coracini 
 
@@ -45,7 +50,7 @@ Code taken from third parties:
 #import <CoreText/CoreText.h>
 #import <QuartzCore/QuartzCore.h>
 
-#include <map>
+#include "viewstate/viewstate.h"
 /* }}} */
 
 /* External {{{ */
@@ -290,12 +295,54 @@ static UIImage *UIImageResize(UIImage *image, CGSize newSize) {
 /* }}} */
 
 /* Fix View Bounds {{{ */
+// I hate iOS 7.
+// Like, everything was fine and then Apple decides to do whatever the shitfuck they're thinking to the bounding system.
+
 // Thanks to http://iphonedevsdk.com/forum/iphone-sdk-development/7953-height-of-standard-navbar-tabbar-statusbar.html
 #define HEIGHT_OF_STATUSBAR 20.f
 #define HEIGHT_OF_NAVBAR 44.f
 #define HEIGHT_OF_TABBAR 50.f
 
 #define HEIGHT_WITH_TABBARCONTROLLER ([[UIScreen mainScreen] applicationFrame].size.height - HEIGHT_OF_NAVBAR - HEIGHT_OF_TABBAR)
+
+static CGRect PerfectFrameForViewController(UIViewController *self) {
+	CGRect ret = [[UIScreen mainScreen] bounds];
+	
+	if (SYSTEM_VERSION_GT_EQ(@"7.0")) {
+		ret.origin.y += HEIGHT_OF_STATUSBAR;
+		ret.size.height -= HEIGHT_OF_STATUSBAR;
+
+		if ([self navigationController]) {
+			ret.origin.y += HEIGHT_OF_NAVBAR;
+			ret.size.height -= HEIGHT_OF_NAVBAR;
+		}
+	}
+	else {
+		ret.size.height -= HEIGHT_OF_STATUSBAR;
+
+		if ([self navigationController])
+			ret.size.height -= HEIGHT_OF_NAVBAR;
+	}
+
+	if ([self tabBarController]) {
+		ret.size.height -= HEIGHT_OF_TABBAR;
+	}
+	
+	ret.size.height += 1.f;
+	return ret;
+	
+	/*CGRect ret = [[UIScreen mainScreen] applicationFrame];
+	ret.origin.y -= HEIGHT_OF_STATUSBAR;
+	ret.size.height += HEIGHT_OF_STATUSBAR;
+	return ret;*/
+
+	//return [[UIScreen mainScreen] applicationFrame];
+}
+
+static inline CGRect FrameWithNavAndTab() {
+	CGRect bounds = [[UIScreen mainScreen] bounds];
+	return CGRectMake(bounds.origin.x, bounds.origin.y + HEIGHT_OF_STATUSBAR + HEIGHT_OF_NAVBAR, bounds.size.width, bounds.size.height - HEIGHT_OF_STATUSBAR - HEIGHT_OF_NAVBAR - HEIGHT_OF_TABBAR + 1.f);
+}
 
 static CGRect FixViewBounds(CGRect bounds) {
 	if (SYSTEM_VERSION_GT_EQ(@"7.0")) bounds.origin.y += HEIGHT_OF_STATUSBAR + HEIGHT_OF_NAVBAR;
@@ -349,11 +396,37 @@ static CGRect FixViewBounds(CGRect bounds) {
 
 /* }}} */
 
+/* Circulares <a> tag {{{ */
+
+static NSString *GetATagContent(NSString *aTag) {
+	NSLog(@"aTag is %@", aTag);
+        
+        NSRange r1 = [aTag rangeOfString:@">"];
+	NSRange r2 = [aTag rangeOfString:@"<" options:0 range:NSMakeRange(r1.location + r1.length, [aTag length]-(r1.location + r1.length))];
+	NSRange r = NSMakeRange(r1.location + r1.length, r2.location - r1.location - r1.length);
+	
+	return [[aTag substringWithRange:r] stringByDeletingPathExtension];
+}
+
+static NSString *GetATagHref(NSString *aTag) {
+	NSScanner *scanner = [NSScanner scannerWithString:aTag];
+	[scanner scanUpToString:@"href" intoString:NULL];
+	[scanner setScanLocation:[scanner scanLocation] + 6];
+
+	NSString *link;
+	[scanner scanUpToString:@"'" intoString:&link]; // replace ' with " and this becomes general-purpose
+	
+	return link;
+}
+
+/* }}} */
+
 /* }}} */
 
 /* Constants {{{ */
 
 #define kPortoRootURL @"http://www.portoseguro.org.br/"
+#define kPortoRootCircularesPage @"http://www.circulares.portoseguro.org.br/"
 
 /* }}} */
 
@@ -417,9 +490,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface SessionController : NSObject {
 	KeychainItemWrapper *$keychainItem;
 	KeychainItemWrapper *$gradeKeyItem;
+	KeychainItemWrapper *$papersKeyItem;
 
 	NSDictionary *$accountInfo;
 	NSString *$gradeID;
+	NSString *$papersID;
+	
 	NSDictionary *$sessionInfo;
 }
 + (SessionController *)sharedInstance;
@@ -430,6 +506,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (NSString *)gradeID;
 - (void)setGradeID:(NSString *)gradeID;
+
+- (NSString *)papersID;
+- (void)setPapersID:(NSString *)papersID;
 
 - (NSDictionary *)sessionInfo;
 - (void)setSessionInfo:(NSDictionary *)sessionInfo;
@@ -582,6 +661,65 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)displayContentView;
 
 - (void)$performUIBlock:(void(^)())block;
+@end
+
+/* }}} */
+
+/* Web View Controller {{{ */
+
+@interface WebViewController : UIViewController <UIWebViewDelegate>
+- (void)loadPage:(NSString *)page;
+- (void)loadURL:(NSURL *)url;
+- (void)loadLocalFile:(NSString *)file;
+- (NSString *)executeJavascript:(NSString *)javascript;
+
+/* UIWebView {{{ */
+
+@property(nonatomic,assign) id<UIWebViewDelegate> delegate;
+
+@property(nonatomic,readonly,retain) UIScrollView *scrollView NS_AVAILABLE_IOS(5_0);
+
+- (void)loadRequest:(NSURLRequest *)request;
+- (void)loadHTMLString:(NSString *)string baseURL:(NSURL *)baseURL;
+- (void)loadData:(NSData *)data MIMEType:(NSString *)MIMEType textEncodingName:(NSString *)textEncodingName baseURL:(NSURL *)baseURL;
+
+@property(nonatomic,readonly,retain) NSURLRequest *request;
+
+- (void)reload;
+- (void)stopLoading;
+
+- (void)goBack;
+- (void)goForward;
+
+@property(nonatomic,readonly,getter=canGoBack) BOOL canGoBack;
+@property(nonatomic,readonly,getter=canGoForward) BOOL canGoForward;
+@property(nonatomic,readonly,getter=isLoading) BOOL loading;
+
+- (NSString *)stringByEvaluatingJavaScriptFromString:(NSString *)script;
+
+@property(nonatomic) BOOL scalesPageToFit;
+
+@property(nonatomic) BOOL detectsPhoneNumbers NS_DEPRECATED_IOS(2_0, 3_0);
+@property(nonatomic) UIDataDetectorTypes dataDetectorTypes NS_AVAILABLE_IOS(3_0);
+
+@property (nonatomic) BOOL allowsInlineMediaPlayback NS_AVAILABLE_IOS(4_0); // iPhone Safari defaults to NO. iPad Safari defaults to YES
+@property (nonatomic) BOOL mediaPlaybackRequiresUserAction NS_AVAILABLE_IOS(4_0); // iPhone and iPad Safari both default to YES
+
+@property (nonatomic) BOOL mediaPlaybackAllowsAirPlay NS_AVAILABLE_IOS(5_0); // iPhone and iPad Safari both default to YES
+
+@property (nonatomic) BOOL suppressesIncrementalRendering NS_AVAILABLE_IOS(6_0); // iPhone and iPad Safari both default to NO
+
+@property (nonatomic) BOOL keyboardDisplayRequiresUserAction NS_AVAILABLE_IOS(6_0); // default is YES
+
+@property (nonatomic) UIWebPaginationMode paginationMode NS_AVAILABLE_IOS(7_0);
+@property (nonatomic) UIWebPaginationBreakingMode paginationBreakingMode NS_AVAILABLE_IOS(7_0);
+@property (nonatomic) CGFloat pageLength NS_AVAILABLE_IOS(7_0);
+@property (nonatomic) CGFloat gapBetweenPages NS_AVAILABLE_IOS(7_0);
+@property (nonatomic, readonly) NSUInteger pageCount NS_AVAILABLE_IOS(7_0);
+
+/* }}} */
+
+- (UIWebView *)webView;
 @end
 
 /* }}} */
@@ -789,7 +927,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Papers {{{ */
 
-@interface PapersViewController : UITableViewController
+@interface PapersViewController : WebDataViewController <UITableViewDelegate, UITableViewDataSource> {
+	vsType *$viewState;
+	vsType *$folder;
+}
 @end
 
 /* }}} */
@@ -1555,6 +1696,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 #define kPortoNivelIPortal @"/alunos14/alunos14.asp"
 #define kPortoNivelIIPortal @"/alunos58/alunos58.asp"
 #define kPortoEMPortal @"/alunos13/alunos13.asp"
+#define kPortoGeneralPortal @"/alunos.asp"
 
 /* }}} */
 
@@ -1603,10 +1745,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		if ([location hasPrefix:kPortoLoginErrorRedirect]) {
 			$handler(nil, nil, [NSError errorWithDomain:kPortoErrorDomain code:1 userInfo:nil]);
 		}
-		else if ([location hasPrefix:kPortoInfantilPortal] || [location hasPrefix:kPortoNivelIPortal] || [location hasPrefix:kPortoNivelIIPortal] || [location hasPrefix:kPortoEMPortal]) {
+		else if ([location hasPrefix:kPortoGeneralPortal] || [location hasPrefix:kPortoInfantilPortal] || [location hasPrefix:kPortoNivelIPortal] || [location hasPrefix:kPortoNivelIIPortal] || [location hasPrefix:kPortoEMPortal]) {
+			NSLog(@"GOOD PORTAL!");
 			$handler([NSHTTPCookie cookiesWithResponseHeaderFields:headerFields forURL:[response URL]], location, nil);
 		}
 		else {
+			NSLog(@"BAD PORTAL %@", location);
 			$handler(nil, nil, [NSError errorWithDomain:kPortoErrorDomain code:2 userInfo:[NSDictionary dictionaryWithObjectsAndKeys:[location lastPathComponent], @"BadPortal", nil]]);
 		}
 	}
@@ -1663,7 +1807,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	if ((self = [super init])) {
 		$keychainItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoApp" accessGroup:@"am.theiostre.portoapp.keychain"];
 		$gradeKeyItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppX" accessGroup:@"am.theiostre.portoapp.keychain"];
-		NSLog(@"gki %@", $gradeKeyItem);
+		$papersKeyItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppY" accessGroup:@"am.theiostre.portoapp.keychain"];
 
 		if (![[$keychainItem objectForKey:(id)kSecAttrAccount] isEqualToString:@""]) {
 			$accountInfo = [[NSDictionary dictionaryWithObjectsAndKeys:
@@ -1675,10 +1819,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 		if (![[$gradeKeyItem objectForKey:(id)kSecAttrAccount] isEqualToString:@""]){
 			$gradeID = [[$gradeKeyItem objectForKey:(id)kSecValueData] retain];
-			NSLog(@"YAY GRADE ID IS COOL %@", $gradeID);
 		}
 		else $gradeID = nil;
-		NSLog(@"i hate you k");
+		
+		if (![[$papersKeyItem objectForKey:(id)kSecAttrAccount] isEqualToString:@""]){
+			$papersID = [[$papersKeyItem objectForKey:(id)kSecValueData] retain];
+		}
+		else $papersID = nil;
 
 		$sessionInfo = nil;
 	}
@@ -1724,6 +1871,23 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	}
 
 	$gradeID = [gradeID retain];
+}
+
+- (NSString *)papersID {
+	return $papersID;
+}
+
+- (void)setPapersID:(NSString *)papersID {
+	if ($papersID != nil) [$papersID release];
+
+	if (papersID == nil) [$papersKeyItem resetKeychainItem];
+	else {
+		// FIXME: Same as above.
+		[$papersKeyItem setObject:@"b4c0n" forKey:(id)kSecAttrAccount];
+		[$papersKeyItem setObject:papersID forKey:(id)kSecValueData];
+	}
+
+	$papersID = [papersID retain];
 }
 
 - (NSDictionary *)sessionInfo {
@@ -1841,6 +2005,75 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @end
 
 /* }}} */
+
+/* }}} */
+
+/* Web View Controller {{{ */
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wincomplete-implementation"
+
+@implementation WebViewController
+@dynamic delegate, scrollView, request, canGoBack, canGoForward, loading, scalesPageToFit, detectsPhoneNumbers, dataDetectorTypes, allowsInlineMediaPlayback, mediaPlaybackRequiresUserAction, mediaPlaybackAllowsAirPlay, suppressesIncrementalRendering, keyboardDisplayRequiresUserAction, paginationMode, paginationBreakingMode, pageLength, gapBetweenPages, pageCount;
+
+// Thanks Conrad.
+- (BOOL)shouldForwardSelector:(SEL)aSelector {
+	return (![[[self webView] superclass] instancesRespondToSelector:aSelector] && [[self webView] respondsToSelector:aSelector]);
+}
+
+- (id)forwardingTargetForSelector:(SEL)aSelector {
+	return (![self respondsToSelector:aSelector] && [self shouldForwardSelector:aSelector]) ? [self webView] : self;
+}
+
+- (void)loadView {
+	UIWebView *webView = [[UIWebView alloc] initWithFrame:CGRectZero];
+	[webView setScalesPageToFit:YES];
+	[webView setDelegate:self];
+	[self setView:webView];
+	[webView release];
+}
+
+- (void)viewDidLoad {
+        [super viewDidLoad];
+        if (SYSTEM_VERSION_GT_EQ(@"7.0"))
+                [self setAutomaticallyAdjustsScrollViewInsets:NO];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+	[super viewWillAppear:animated];
+	[UIView animateWithDuration:.1f animations:^{
+                [[self webView] setFrame:PerfectFrameForViewController(self)];
+        }];
+}
+
+- (void)loadURL:(NSURL *)pageURL {
+	NSURLRequest *request = [[NSURLRequest alloc] initWithURL:pageURL];
+	[self loadRequest:request];
+	[request release];
+}
+
+- (void)loadPage:(NSString *)page {
+	[self loadURL:[NSURL URLWithString:page]];
+}
+
+- (void)loadLocalFile:(NSString *)path {
+	[self loadURL:[NSURL fileURLWithPath:path]];
+}
+
+- (NSString *)executeJavascript:(NSString *)javascript {
+	return [[self webView] stringByEvaluatingJavaScriptFromString:javascript];
+}
+
+- (void)webViewDidFinishLoad:(UIWebView *)webView {
+	[[[self webView] scrollView] setContentOffset:CGPointMake(0, 0)];
+}
+
+- (UIWebView *)webView {
+	return (UIWebView *)[self view];
+}
+@end
+
+#pragma clang diagnostic pop
 
 /* }}} */
 
@@ -2199,7 +2432,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		if ([error code] == 1)
 			[alert setMessage:@"Foi impossível fazer login com estas credenciais. Verifique login e senha."];
 		else if ([error code] == 2)
-			[alert setMessage:[NSString stringWithFormat:@"O portal %@ não é suportado pelo app.", [[error userInfo] objectForKey:@"BadDomain"]]];
+			[alert setMessage:[NSString stringWithFormat:@"O portal %@ não é suportado pelo app.", [[error userInfo] objectForKey:@"BadPortal"]]];
 		else
 			[alert setMessage:@"Erro desconhecido."];
 
@@ -2327,8 +2560,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)authenticate {
-	NSLog(@"AUTHENTICATE");
-	
 	NSString *user = [$usernameField text];
 	NSString *password = [$passwordField text];
 	
@@ -2340,15 +2571,18 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		password, kPortoPasswordKey,
 		nil]];
 	
-	NSLog(@"GONNA LOAD SESSION WITH HANDLER.");
 	[controller loadSessionWithHandler:^(BOOL success, NSError *error){
 		if (!success) [controller setAccountInfo:previousAccountInfo];
-		else [self generateGradeID];
+		else {
+			[self generateGradeID];
+			[self generatePapersID];
+		}
 
 		[self endRequestWithSuccess:success error:error];
 	}];
 }
 
+// TODO: Is it a better approach to keep this here or in SessionController?
 - (void)generateGradeID {
 	SessionController *controller = [SessionController sharedInstance];
 	NSURL *url = [NSURL URLWithString:[@"http://www.educacional.com.br/" stringByAppendingString:[[controller sessionInfo] objectForKey:kPortoPortalKey]]];
@@ -2395,6 +2629,44 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[document release];
 
 	[controller setGradeID:token];
+}
+
+/* 
+Funnily, they have this fun security issue where if you go to iframe_comunicados.asp without any cookies
+you will still get a valid token for name "Funcionário".
+*/
+
+- (void)generatePapersID {
+	SessionController *controller = [SessionController sharedInstance];
+	//NSURL *papersURL = [NSURL URLWithString:@"http://www.educacional.com.br/rd/gravar.asp?servidor=http://portoseguro.educacional.net&url=/educacional/comunicados.asp"];
+	NSURL *papersURL = [NSURL URLWithString:@"http://portoseguro.educacional.net/educacional/iframe_comunicados.asp"];
+
+	NSURLResponse *response;
+	NSError *error;
+	NSData *papersPageData = [controller loadPageWithURL:papersURL method:@"GET" response:&response error:&error];
+	if (papersPageData == nil) {
+		[controller setPapersID:nil];
+		return;
+	}
+	
+	// Since libxml doesn't like this page, we'll need to do parsing ourselves.
+	// I think this deserves an URGENT FIXME.
+	const char *pageData = (const char *)[papersPageData bytes];
+	char *input = strstr(pageData, "<input");
+	char *close = strstr(input, ">");
+	char *value = strstr(input, "value");
+	if (close <= value) {
+		[controller setPapersID:nil];
+		return;
+	}
+
+	value += 7; //strlen("value=\"")
+	char *c = value;;
+	while (*c != '"') c++;
+	*c = '\0';
+	
+	NSLog(@"value is %s", value);
+	[controller setPapersID:[NSString stringWithUTF8String:value]];
 }
 @end
 /* }}} */
@@ -2909,9 +3181,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @implementation NewsTableViewCell
 @synthesize newsImage = $newsImage, newsTitle = $newsTitle, newsSubtitle = $newsSubtitle;
-
-// [23:41:33] <@DHowett> theiostream: At the top of the function, get 'self.bounds' out into a local variable. each time you call it is a dynamic dispatch because the compiler cannot assume that it has no side-effects
-// [23:42:13] <@DHowett> theiostream: the attributed strings and their CTFrameshit should be cached whenver possible. do not create a new attributed string every time the rect is drawn
 
 - (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
 	CGContextRef context = UIGraphicsGetCurrentContext();
@@ -3646,7 +3915,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (GradesListViewController *)initWithYear:(NSString *)year period:(NSString *)period viewState:(NSString *)viewState eventValidation:(NSString *)eventValidation {
-	if ((self = [super init])) {
+	if ((self = [super initWithIdentifier:@"GradesListView"])) {
 		$viewState = [viewState retain];
 		$eventValidation = [eventValidation retain];
 
@@ -3668,7 +3937,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[super reloadData];
 	SessionController *sessionController = [SessionController sharedInstance];
 	
-	#define READ_FROM_LOCAL_DEBUG_HTML
+	//#define READ_FROM_LOCAL_DEBUG_HTML
 	#ifdef READ_FROM_LOCAL_DEBUG_HTML
 	NSData *data = [NSData dataWithContentsOfFile:@"/Users/BobNelson/Documents/Projects/PortoApp/3rdp.html"];
 	#else
@@ -4050,9 +4319,205 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* Papers Controller {{{ */
 
 @implementation PapersViewController
-- (void)loadView {
-	[super loadView];
-	[[self view] setBackgroundColor:[UIColor blueColor]];
+- (id)initWithIdentifier:(NSString *)identifier {
+	if ((self = [super initWithIdentifier:identifier])) {
+		$viewState = NULL;
+		$folder = NULL;
+	}
+
+	return self;
+}
+
+- (void)reloadData {
+	[super reloadData];
+	
+	if ($folder == NULL) {
+		[self setTitle:@"Circulares"];
+		
+		SessionController *sessionController = [SessionController sharedInstance];
+		if (![sessionController hasSession]) [self displayFailViewWithImage:nil text:@"Sem autenticação.\nRealize um login no menu de Contas."];
+		if (![sessionController papersID]) {
+                        NSLog(@"err id");
+			[self displayFailViewWithImage:nil text:@"Falha ao obter o ID de Circulares.\n\nEstamos trabalhando para consertar este problema."];
+			return;
+		}
+
+		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@?token=%@", kPortoRootCircularesPage, [sessionController papersID]]];
+		NSURLResponse *response;
+		NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+		if (data == nil) {
+                        NSLog(@"err intern");
+			[self displayFailViewWithImage:nil text:@"Falha ao carregar página.\n\nCheque sua conexão de Internet."];
+			return;
+		}
+
+		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+		//NSLog(@"FORM CONTENT %@", [[document firstElementMatchingPath:@"/html/body/form"] content]);
+		//NSLog(@"also got %@", [document firstElementMatchingPath:@"/html/body/form/div"]);
+		XMLElement *viewStateInput = [document firstElementMatchingPath:@"/html/body/form/input[@id='__VIEWSTATE']"];
+		NSLog(@"EL %@", viewStateInput);
+		NSLog(@"GOT %@ %@", [viewStateInput tagName], [[viewStateInput attributes] objectForKey:@"id"]);
+		
+		NSString *value = [[viewStateInput attributes] objectForKey:@"value"];
+		char *str = (char *)malloc([value length] * sizeof(char));
+		
+		int blen = base64_decode([value UTF8String], [value length], &str);
+		if (blen < 0) {
+			NSLog(@"err blen");
+                        [self displayFailViewWithImage:nil text:@"Erro interpretando página.\nEstamos trabalhando no problema.\n\n(Base64)"];
+			return;
+		}
+		
+		$viewState = parse_viewstate((unsigned char **)&str, true);
+		if ($viewState->stateType == kViewStateTypeError) {
+			NSLog(@"err vs");
+                        [self displayFailViewWithImage:nil text:@"Erro interpretando página.\nEstamos trabalhando no problema.\n\n(ViewState)"];
+			return;
+		}
+		
+		$folder = $viewState->pair->first->pair->second->pair->second->arrayList[1]->pair->second->arrayList[5]->pair->first->array->array[1]->array->array[1]->array->array[1];
+                NSLog(@"$folder ptr %p", $folder);
+		[document release];
+	}
+        
+        [self $performUIBlock:^{
+                UITableView *tableView = (UITableView *)[self contentView];
+                [tableView reloadData];
+                
+                NSLog(@"DISPLAY CONTENT VIEW!!");
+                [self displayContentView];
+        }];
+}
+
+- (void)loadContentView {
+	UITableView *tableView = [[UITableView alloc] initWithFrame:FixViewBounds([[self view] bounds]) style:UITableViewStylePlain];
+	[tableView setDelegate:self];
+	[tableView setDataSource:self];
+
+	$contentView = tableView;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return 1;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+        return $folder == NULL ? 0 : $folder->array->length-1;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PortoAppCirculares"];
+	if (cell == nil) {
+		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppCirculares"] autorelease];
+		
+		UITapGestureRecognizer *tapGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tappedScrollView:)];
+		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(15.f, [cell bounds].origin.y, [cell bounds].size.width - 15.f, [cell bounds].size.height)];
+		[scrollView setBackgroundColor:[UIColor whiteColor]];
+		[scrollView addGestureRecognizer:tapGestureRecognizer];
+		[tapGestureRecognizer release];
+		//[scrollView setBounces:NO];
+
+		UILabel *label = [[UILabel alloc] initWithFrame:[cell bounds]];
+		[label setTextColor:[UIColor blackColor]];
+		[label setBackgroundColor:[UIColor clearColor]];
+		[label setFont:[[cell textLabel] font]];
+		[label setTag:88];
+		[scrollView addSubview:label];
+		[label release];
+
+		[scrollView setTag:87];
+		[[cell contentView] addSubview:scrollView];
+		[scrollView release];
+	}
+	
+	vsType *subType = $folder->array->array[[indexPath row]+1];
+	BOOL isFolder = subType->array->array[1]->stateType != kViewStateTypeNull;
+
+        NSString *text = [NSString stringWithUTF8String:subType->array->array[0]->arrayList[1]->string];
+	if (!isFolder && ![text hasPrefix:@"<a"]) {
+		isFolder = YES;
+	}
+	
+	NSString *endText = isFolder ? text : GetATagContent(text);
+	//[[cell textLabel] setText:isFolder ? text : GetATagContent(text)];
+        [cell setAccessoryType:isFolder ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone];
+	
+	UIScrollView *scrollView = (UIScrollView *)[cell viewWithTag:87];
+	UILabel *label = (UILabel *)[scrollView viewWithTag:88];
+	CGFloat width = [endText sizeWithFont:[label font]].width;
+	
+	[scrollView setFrame:(CGRect){[scrollView frame].origin, {isFolder ? [scrollView frame].size.width-15.f : [scrollView frame].size.width, [scrollView frame].size.height}}];
+	[scrollView setContentSize:CGSizeMake(width < [scrollView bounds].size.width ? [scrollView bounds].size.width : width, [scrollView contentSize].height)];
+	
+	[label setFrame:(CGRect){[label frame].origin, {[scrollView contentSize].width, [label frame].size.height}}];
+	[label setText:endText];
+
+	return cell;
+}
+
+- (void)$setFolder:(vsType *)folder {
+	[self setTitle:[NSString stringWithUTF8String:folder->array->array[0]->arrayList[1]->string]];
+        
+        if (folder->array->array[1]->stateType != kViewStateTypeNull)
+                $folder = folder->array->array[1];
+        else
+                $folder = folder;
+}
+
+- (void)tappedScrollView:(UIGestureRecognizer *)rec {
+	UITableView *tableView = (UITableView *)$contentView;
+	NSIndexPath *indexPath = [tableView indexPathForRowAtPoint:[rec locationInView:tableView]];
+	
+	[tableView selectRowAtIndexPath:indexPath animated:YES scrollPosition:UITableViewScrollPositionMiddle];
+	[self tableView:tableView didSelectRowAtIndexPath:indexPath];
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	vsType *subType = $folder->array->array[[indexPath row]+1];
+        
+	if (subType->array->array[1]->stateType != kViewStateTypeNull) {
+                PapersViewController *controller = [[[PapersViewController alloc] initWithIdentifier:@"papers"] autorelease];
+		[controller $setFolder:subType];
+
+		[[self navigationController] pushViewController:controller animated:YES];
+	}
+	
+	else {
+		NSString *string = [NSString stringWithUTF8String:subType->array->array[0]->arrayList[1]->string];
+		if (![string hasPrefix:@"<a"]) {
+			UIAlertView *alertView = [[UIAlertView alloc] init];
+			[alertView setTitle:@"Pasta vazia"];
+			[alertView setMessage:@"Não há nenhuma circular nesta pasta."];
+			[alertView setDelegate:nil];
+			[alertView addButtonWithTitle:@"OK"];
+
+			[alertView show];
+			[alertView release];
+
+			return;
+		}
+
+		NSString *title = GetATagContent(string);
+		NSString *pdfAddress = [kPortoRootCircularesPage stringByAppendingString:GetATagHref(string)];
+		
+		WebViewController *webViewController = [[[WebViewController alloc] init] autorelease];
+		[webViewController loadPage:[pdfAddress stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding]];
+
+		[webViewController setTitle:title];
+		[[self navigationController] pushViewController:webViewController animated:YES];
+	}
+
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+- (void)freeData {
+	[super freeData];
+}
+
+- (void)dealloc {
+	/*if ($viewState != NULL)
+		free_viewstate($viewState);*/
+	[super dealloc];
 }
 @end
 
@@ -4118,9 +4583,10 @@ static void DebugInit() {
 	GradesViewController *gradesViewController = [[[GradesViewController alloc] initWithIdentifier:@"grades"] autorelease];
 	UINavigationController *gradesNavController = [[[UINavigationController alloc] initWithRootViewController:gradesViewController] autorelease];
 	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:nil tag:0] autorelease]];
-
-	PapersViewController *papersViewController = [[[PapersViewController alloc] init] autorelease];
-	[papersViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Circulares" image:nil tag:0] autorelease]];
+	
+	PapersViewController *papersViewController = [[[PapersViewController alloc] initWithIdentifier:@"papers"] autorelease];
+	UINavigationController *papersNavController = [[[UINavigationController alloc] initWithRootViewController:papersViewController] autorelease];
+	[papersNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Circulares" image:nil tag:0] autorelease]];
 
 	ServicesViewController *servicesViewController = [[[ServicesViewController alloc] init] autorelease];
 	[servicesViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Serviços" image:nil tag:0] autorelease]];
@@ -4132,7 +4598,7 @@ static void DebugInit() {
 	NSArray *controllers = [NSArray arrayWithObjects:
 		newsNavController,
 		gradesNavController,
-		papersViewController,
+		papersNavController,
 		servicesViewController,
 		accountNavViewController,
 		nil];

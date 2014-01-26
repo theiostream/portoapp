@@ -774,10 +774,17 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* News {{{ */
 
+@interface NewsArticleWebViewController : WebViewController {
+	dispatch_queue_t $queue;
+	NSURL *$newsURL;
+}
+- (id)initWithQueue:(dispatch_queue_t)queue newsURL:(NSURL *)newsURL;
+@end
+
 @interface NewsTableViewCell : ABTableViewCell {
-	UIImage *$newsImage;
-	NSString *$newsTitle;
-	NSString *$newsSubtitle;
+        UIImage *$newsImage;
+        NSString *$newsTitle;
+        NSString *$newsSubtitle;
 }
 
 @property(nonatomic, retain) UIImage *newsImage;
@@ -785,55 +792,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @property(nonatomic, retain) NSString *newsSubtitle;
 @end
 
-@interface NewsIndexViewController : UIViewController
-@end
-
-@interface NewsItemView : UIView {
-	CGSize sectionSize;
-	CGSize titleSize;
-	CGSize subtitleSize;
-	
-	CGColorRef textColor;
-	CTFontRef sectionFont;
-	CTFontRef titleFont;
-	CTFontRef subtitleFont;
-	CTFontRef bodyFont;
-
-	CTFramesetterRef sectionFramesetter;
-	CTFramesetterRef titleFramesetter;
-	CTFramesetterRef subtitleFramesetter;
-	
-	NSArray *contents;
-	CTFramesetterRef *bodyFramesetters;
-	NSUInteger bodyFramesettersCount;
-	NSUInteger imagesCount;
-	NSMutableArray *bodySizes;
-}
-- (CGFloat)heightOffset;
-- (void)setSection:(NSString *)section;
-- (void)setTitle:(NSString *)title;
-- (void)setSubtitle:(NSString *)subtitle;
-- (void)setContents:(NSArray *)contents;
-@end
-
-@interface NewsItemViewController : UIViewController <UIWebViewDelegate> {
-	NSURL *$url;
-	
-	BOOL $isLoading;
-
-	LoadingIndicatorView *$loadingView;
-	UIScrollView *$scrollView;
-	NewsItemView *$contentView;
-	UIWebView *$webView;
-}
-@end
-
-@interface NewsViewController : UITableViewController {
-	UITableView *$tableView;
-	UITableViewCell *$loadingCell;
-	
+@interface NewsViewController : WebDataViewController <UITableViewDelegate, UITableViewDataSource> {
 	NSMutableArray *$imageData;
-	BOOL $isLoading;
 }
 @end
 
@@ -2064,10 +2024,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return [[self webView] stringByEvaluatingJavaScriptFromString:javascript];
 }
 
-- (void)webViewDidFinishLoad:(UIWebView *)webView {
-	[[[self webView] scrollView] setContentOffset:CGPointMake(0, 0)];
-}
-
 - (UIWebView *)webView {
 	return (UIWebView *)[self view];
 }
@@ -2675,427 +2631,243 @@ you will still get a valid token for name "Funcionário".
 
 /* News Controller {{{ */
 
-@implementation NewsIndexViewController
-@end
-
-@implementation NewsItemView
-
-- (id)initWithFrame:(CGRect)frame {
-	if ((self = [super initWithFrame:frame])) {
-		sectionSize = CGSizeZero;
-		titleSize = CGSizeZero;
-		subtitleSize = CGSizeZero;
-		
-		bodyFramesettersCount = 0;
-		imagesCount = 0;
-
-		textColor = (CGColorRef)CFRetain([[UIColor blackColor] CGColor]);
-		
-		NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
-		bodyFont = CTFontCreateWithName((CFStringRef)systemFont, 15.f, NULL);
-		sectionFont = CTFontCreateWithName((CFStringRef)systemFont, 24.f, NULL);
-		titleFont = CTFontCreateCopyWithSymbolicTraits(bodyFont, 32.f, NULL, kCTFontBoldTrait, kCTFontBoldTrait);
-		subtitleFont = CTFontCreateCopyWithSymbolicTraits(bodyFont, 15.f, NULL, kCTFontItalicTrait, kCTFontItalicTrait);
-		
-		sectionFramesetter = NULL;
-		titleFramesetter = NULL;
-		subtitleFramesetter = NULL;
-		
-		bodyFramesetters = NULL;
-		bodySizes = nil;
-		contents = nil;
-	}
-
-	return self;
-}
-
-- (void)setSection:(NSString *)section {
-	if (sectionFramesetter != NULL) CFRelease(sectionFramesetter);
-	sectionFramesetter = CreateFramesetter(sectionFont, textColor, (CFStringRef)section, YES);
-}
-
-- (void)setTitle:(NSString *)title {
-	if (titleFramesetter != NULL) CFRelease(titleFramesetter);
-	titleFramesetter = CreateFramesetter(titleFont, textColor, (CFStringRef)title, NO);
-}
-
-- (void)setSubtitle:(NSString *)subtitle {
-	if (subtitleFramesetter != NULL) CFRelease(subtitleFramesetter);
-	subtitleFramesetter = CreateFramesetter(subtitleFont, textColor, (CFStringRef)[subtitle stringByReplacingOccurrencesOfString:@"\t" withString:@""], NO);
-}
-
-- (void)setContents:(NSArray *)contents_ {
-	if (bodyFramesetters != NULL) free(bodyFramesetters);
-	if (contents != nil) [contents release];
-	contents = [contents_ retain];
-
-	bodyFramesetters = (CTFramesetterRef *)calloc([contents count], sizeof(CTFramesetterRef));
-	bzero(bodyFramesetters, [contents count]);
-	
-	for (id content in contents) {
-		if ([content isKindOfClass:[NSString class]]) {
-			CTFramesetterRef framesetter = CreateFramesetter(bodyFont, textColor, (CFStringRef)content, NO);
-			bodyFramesetters[bodyFramesettersCount++] = framesetter;
-		}
-		else if ([content isKindOfClass:[UIImage class]]) imagesCount++;
-	}
-}
-
-- (CGFloat)heightOffset {
-	//return bodyFramesettersCount * CTFontGetSize(bodyFont)*96/72 + CTFontGetSize(subtitleFont)*96/72;
-	return 6 * pttopx(CTFontGetSize(bodyFont)); // don't ask me why. Just don't. I don't know.
-}
-
-- (CGSize)sizeThatFits:(CGSize)size {
-	if (bodySizes != nil) [bodySizes release];
-	bodySizes = [[NSMutableArray alloc] init];
-	
-	CGFloat ret = 0.f;
-	CGFloat width = size.width;
-	
-	titleSize = CTFramesetterSuggestFrameSizeWithConstraints(titleFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(width-10.f, CGFLOAT_MAX), NULL);
-	subtitleSize = CTFramesetterSuggestFrameSizeWithConstraints(subtitleFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(width-10.f, CGFLOAT_MAX), NULL);
-	sectionSize = CTFramesetterSuggestFrameSizeWithConstraints(sectionFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(width-10.f, CGFLOAT_MAX), NULL);
-	ret += titleSize.height + subtitleSize.height + sectionSize.height/* + 3 * 5.f*/;
-	NSLog(@"ret += %f = %f", titleSize.height + subtitleSize.height + sectionSize.height, ret);
-	
-	NSUInteger framesetters = 0;
-	for (id content in contents) {
-		if ([content isKindOfClass:[NSString class]]) {
-			CTFramesetterRef framesetter = bodyFramesetters[framesetters];
-			CGSize bodySize = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, CFRangeMake(0, 0), NULL, CGSizeMake(width-10.f, CGFLOAT_MAX), NULL);
-			[bodySizes addObject:NSStringFromCGSize(bodySize)];
-
-			ret += bodySize.height /*+ 5.f*/;
-			NSLog(@"ret += %f = %f", bodySize.height, ret);
-			framesetters++;
-		}
-
-		else if ([content isKindOfClass:[UIImage class]]) {
-			UIImage *image = (UIImage *)content;
-			CGSize imageSize = [image size];
-
-			CGFloat ratio = width / imageSize.width;
-			CGFloat height = ratio * imageSize.height;
-			ret += height;
-			NSLog(@"ret += %f = %f", height, ret);
-		}
-	}
-	
-	return CGSizeMake(width, ret + imagesCount * 7.f);
-}
-
-- (void)drawRect:(CGRect)rect {
-	NSLog(@"DRAW RECT: %@", NSStringFromCGRect(rect));
-
-	CGContextRef context = UIGraphicsGetCurrentContext();
-	[[UIColor whiteColor] setFill];
-	CGContextFillRect(context, rect);
-	
-	CGContextSetTextPosition(context, 0.f, 0.f);
-	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
-	CGContextTranslateCTM(context, 0, [self bounds].size.height);
-	CGContextScaleCTM(context, 1.0, -1.0);
-	
-	NSUInteger bodyProgression = bodyFramesettersCount;
-	CGFloat startY = 0.f;
-	for (int i = [contents count]-1; i>=0; i--) {
-		if ([[contents objectAtIndex:i] isKindOfClass:[NSString class]]) {
-			CTFramesetterRef framesetter = bodyFramesetters[--bodyProgression];
-			
-			CGRect bodyRect = CGRectMake(7.f, startY, rect.size.width - 14.f, CGSizeFromString([bodySizes objectAtIndex:bodyProgression]).height);
-
-			NSLog(@"BODY RECT: %@", NSStringFromCGRect(bodyRect));
-			CTFrameRef bodyFrame = CreateFrame(framesetter, bodyRect);
-			CTFrameDraw(bodyFrame, context);
-			CFRelease(bodyFrame);
-
-			startY += bodyRect.size.height;
-		}
-
-		else if ([[contents objectAtIndex:i] isKindOfClass:[UIImage class]]) {
-			UIImage *image = (UIImage *)[contents objectAtIndex:i];
-			CGSize imageSize = [image size];
-
-			CGFloat ratio = rect.size.width / imageSize.width;
-			CGFloat height = ratio * imageSize.height;
-			
-			CGImageRef img = [image CGImage];
-			CGContextDrawImage(context, CGRectMake(0.f, startY - 7.f, rect.size.width, height), img);
-			NSLog(@"IMAGE RECT: %@", NSStringFromCGRect(CGRectMake(0.f, startY, rect.size.width, height)));
-			CFRelease(img);
-			
-			startY += height + 7.f;
-		}
-	}
-	
-	CGRect subtitleRect = CGRectMake(7.f, startY, rect.size.width - 14.f, subtitleSize.height);
-	NSLog(@"SUBTITLE %@", NSStringFromCGRect(subtitleRect));
-	startY += subtitleSize.height;
-	CGRect titleRect = CGRectMake(7.f, startY, rect.size.width - 14.f, titleSize.height);
-	NSLog(@"TITLE %@", NSStringFromCGRect(titleRect));
-	startY += titleSize.height /*+ 5.f*/;
-	CGRect sectionRect = CGRectMake(7.f, startY, rect.size.width - 14.f, sectionSize.height);
-	NSLog(@"SECTION %@", NSStringFromCGRect(sectionRect));
-	
-	CTFrameRef sectionFrame = CreateFrame(sectionFramesetter, sectionRect);
-	CTFrameRef titleFrame = CreateFrame(titleFramesetter, titleRect);
-	CTFrameRef subtitleFrame = CreateFrame(subtitleFramesetter, subtitleRect);
-	CTFrameDraw(sectionFrame, context);
-	CTFrameDraw(titleFrame, context);
-	CTFrameDraw(subtitleFrame, context);
-	CFRelease(titleFrame);
-	CFRelease(subtitleFrame);
-	CFRelease(sectionFrame);
-}
-
-- (void)dealloc {
-	CFRelease(textColor);
-	CFRelease(sectionFont);
-	CFRelease(titleFont);
-	CFRelease(subtitleFont);
-	CFRelease(bodyFont);
-	CFRelease(sectionFramesetter);
-	CFRelease(titleFramesetter);
-	CFRelease(subtitleFramesetter);
-
-	[contents release];
-	for (int i=0; i<bodyFramesettersCount; i++) CFRelease(bodyFramesetters[i]);
-	free(bodyFramesetters);
-	[bodySizes release];
-
-	[super dealloc];
-}
-@end
-
-@implementation NewsItemViewController
-- (id)initWithURL:(NSURL *)url {
+@implementation NewsArticleWebViewController
+- (id)initWithQueue:(dispatch_queue_t)queue newsURL:(NSURL *)newsURL {
 	if ((self = [super init])) {
-		$url = [url retain];
-
-		$isLoading = YES;
+		dispatch_retain(queue);
+                $queue = queue;
+		$newsURL = [newsURL retain];
 	}
 
 	return self;
 }
 
-- (void)loadView {
-	[super loadView];
-	[[self view] setBackgroundColor:[UIColor whiteColor]];
-
-	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:[[self view] bounds]];
-	[[self view] addSubview:$loadingView];
-	
-	$scrollView = [[UIScrollView alloc] initWithFrame:[[self view] bounds]];
-	[$scrollView setHidden:YES];
-	[[self view] addSubview:$scrollView];
-	
-	$contentView = [[NewsItemView alloc] initWithFrame:CGRectMake(0.f, 0.f, [[self view] bounds].size.width, 0.f)];
-	[$scrollView addSubview:$contentView];
-
-	$webView = [[UIWebView alloc] initWithFrame:[[self view] bounds]];
-	[$webView setHidden:YES];
-	[$webView setDelegate:self];
-	[[self view] addSubview:$webView];
-	
-	[[self view] addSubview:$scrollView];
-}
-
-- (void)viewDidLoad {
-	[super viewDidLoad];
-	[self setTitle:@"Artigo"];
-
-	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-		NSData *data = [NSData dataWithContentsOfURL:$url];
-		if (data == nil) {
-			dispatch_sync(dispatch_get_main_queue(), ^{
-				;
-			});
-			
-			return;
-		}
-
+- (void)webViewDidFinishLoad:(UIWebView *)webView {
+	dispatch_async($queue, ^{
+		NSData *data = [NSData dataWithContentsOfURL:$newsURL];
+		
 		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-		NSLog(@"%@", document);
-
-		XMLElement *content = [document firstElementMatchingPath:@"/html/body/div[@id = 'main']/section/div[starts-with(@id, 'content')]/div[starts-with(@class, 'conteudo')]"];
-		if (content == nil) {
-			[document release];
-			
-			dispatch_sync(dispatch_get_main_queue(), ^{
-				[self failContentViewWithHTMLData:data];
-			});
-
-			return;
-		}
-		
-		XMLElement *sectionElement = [content firstElementMatchingPath:@"./div[@class='titulo']/h2"];
-
-		NSString *cls = [[content attributes] objectForKey:@"class"];
-		XMLElement *articleElement = [cls hasSuffix:@"-2"] ? [content firstElementMatchingPath:@"./article"] : content;
-		NSArray *paragraphs = [articleElement elementsMatchingPath:@"./p[not(contains(text(), 'javascript:')) and string-length(text())>0]"];
-
-		XMLElement *titleElement = [articleElement firstElementMatchingPath:@"./h4"];
-		XMLElement *subtitleElement = nil;
-		
-		BOOL hasImageElement = NO;
-		NSUInteger paragraphCount = 0;
-		for (XMLElement *element in paragraphs) {
-			if ([element firstElementMatchingPath:@"./img"]) { hasImageElement = YES; break; }
-			else if (subtitleElement == nil) subtitleElement = element;
-			paragraphCount++;
-		}
-		if (!hasImageElement || paragraphCount > 1) {
-			if (![subtitleElement firstElementMatchingPath:@"./em"]) //FIXME
-				subtitleElement = nil;
-		}
-		
-		NSString *section = sectionElement ? [sectionElement content] : nil;
-		NSString *title = titleElement ? [titleElement content] : nil;
-		NSString *subtitle = subtitleElement ? ParseNewsParagraph([subtitleElement content]) : nil;
-		NSMutableArray *contents = [NSMutableArray array];
-
-		NSUInteger startIndex = subtitle ? 1 : 0;
-		for (NSUInteger i = startIndex; i < [paragraphs count]; i++) {
-			XMLElement *imageElement = nil;
-			if ((imageElement = [[paragraphs objectAtIndex:i] firstElementMatchingPath:@"./img"]))
-				[contents addObject:[UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[kPortoRootURL stringByAppendingString:[[imageElement attributes] objectForKey:@"src"]]]]]];
-			else {
-				NSString *parsed = ParseNewsParagraph([[paragraphs objectAtIndex:i] content]);
-				if ([parsed length] > 4) // That is \n, \t, \u00a0 and another mysterious char. (\0?)
-					[contents addObject:parsed];
-			}
-		}
-
-		dispatch_sync(dispatch_get_main_queue(), ^{
-			[$contentView setSection:section];
-			[$contentView setTitle:title];
-			[$contentView setSubtitle:subtitle];
-			[$contentView setContents:contents];
-
-			[self enableContentView];
-		});
+		NSString *newsContent = [[document firstElementMatchingPath:@"/html/body/div[@id='main']/section//div[starts-with(@class, 'conteudo')]"] content];
+		NSLog(@"FOUND NEWS CONTENT %@", newsContent);
 
 		[document release];
+		
+		// FIXME: Sometimes stuff will get screwed-up when there's like an image gallery.
+		// Example: https://www.portoseguro.org.br/noticia/detalhe/prazer-pela-cincia
+		dispatch_sync(dispatch_get_main_queue(), ^{
+			// Firstly, we add Porto's data into our base html.
+			[self executeJavascript:[NSString stringWithFormat:@"var el = document.getElementById('portoAppInsertContent'); el.innerHTML='%@';", [[[newsContent componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" "] stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"]]];
+			
+			// Secondly, we fix an error thanks to them not checking their quotations.
+			/* Source code: <div id="share2"><div class="fb-share-button" data-href=""https://www.portoseguro.org.br//noticia/unidade/morumbi/inovao-com-mit"" data-type="box_count"></div></div> (works on WebKit!)
+			   Rendered by libxml2: <div id="share2"><div class="fb-share-button" data-href="" https:="" data-type="box_count"/></div> (doesn't close share2)
+			   Since share2 has a big margin to the right, we need to patch that to get a decent page.
+			*/
+			[self executeJavascript:@"var el = document.getElementById('share'); el.style.margin = '0 auto 0 10px';"];
+			[self executeJavascript:@"var el = document.getElementById('share2'); el.style.margin = '0 auto 0 10px';"];
+
+			// Thirdly, we optimize the page for a better reading experience.
+			[self executeJavascript:@"var p = document.getElementsByTagName('p'); for(i=0; i<p.length; i++) { p[i].style.fontSize='28px'; p[i].style.lineHeight='1.5'; }"];
+			/* " do not remove this comment else vim will get mad. */
+			[self executeJavascript:@"var el = document.getElementsByTagName('h2')[0]; el.style.fontSize='48px';"];
+			[self executeJavascript:@"var el = document.getElementsByTagName('h4')[0]; el.style.fontSize='54px';"];
+		});
 	});
 }
 
-- (void)failContentViewWithHTMLData:(NSData *)data {
-	[$webView loadData:data MIMEType:@"text/html" textEncodingName:@"utf-8" baseURL:$url];
-	
-	[self hideLoadingView];
-	[$webView setHidden:NO];
-}
+- (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
+	if (navigationType == UIWebViewNavigationTypeLinkClicked) {
+		[[UIApplication sharedApplication] openURL:[request URL]];
+		return NO;
+	}
 
-- (void)hideLoadingView {
-	[[$loadingView activityIndicatorView] stopAnimating];
-	[$loadingView setHidden:YES];
-}
-
-
-- (void)enableContentView {
-	[self hideLoadingView];
-	
-	[$contentView sizeToFit];
-	[$contentView setNeedsDisplay];
-	
-	[$scrollView setContentSize:CGSizeMake([$contentView bounds].size.width, [$contentView bounds].size.height + [$contentView heightOffset])];
-	NSLog(@"size %@ contentsize %@", NSStringFromCGRect([$contentView bounds]), NSStringFromCGSize([$scrollView contentSize]));
-	[$scrollView setHidden:NO];
-}
-
-- (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)type {
-	return NO;
+	return YES;
 }
 
 - (void)dealloc {
-	[$url release];
-
-	[$loadingView release];
-	[$scrollView release];
-	[$contentView release];
-	[$webView release];
+	dispatch_release($queue);
+	[$newsURL release];
+	
 	[super dealloc];
+}
+@end
+
+@implementation NewsTableViewCell
+@synthesize newsImage = $newsImage, newsTitle = $newsTitle, newsSubtitle = $newsSubtitle;
+
+- (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
+        CGContextRef context = UIGraphicsGetCurrentContext();
+
+        [[UIColor whiteColor] setFill];
+        CGContextFillRect(context, rect);
+        
+        [$newsImage drawInRect:CGRectMake(0.f, 0.f, [self bounds].size.width, 130.f)];
+
+        CGColorRef textColor = [[UIColor blackColor] CGColor];
+
+        NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
+        CTFontRef bodyFont = CTFontCreateWithName((CFStringRef)systemFont, 16.f, NULL);
+        CTFontRef headFont = CTFontCreateCopyWithSymbolicTraits(bodyFont, 18.f, NULL, kCTFontBoldTrait, kCTFontBoldTrait);
+
+        NSDictionary *fontAttributes = [NSDictionary dictionaryWithObjectsAndKeys:
+                (id)bodyFont, (id)kCTFontAttributeName,
+                textColor, (id)kCTForegroundColorAttributeName,
+                nil];
+        NSDictionary *boldFontAttributes = [NSDictionary dictionaryWithObjectsAndKeys:
+                (id)headFont, (id)kCTFontAttributeName,
+                textColor, (id)kCTForegroundColorAttributeName,
+                nil];
+        CFRelease(bodyFont);
+        CFRelease(headFont);
+        
+        NSAttributedString *titleString = [[NSAttributedString alloc] initWithString:$newsTitle attributes:boldFontAttributes];
+        NSAttributedString *subtitleString = [[NSAttributedString alloc] initWithString:$newsSubtitle attributes:fontAttributes];
+
+        CTLineRef line = CTLineCreateWithAttributedString((CFAttributedStringRef)titleString);
+        [titleString release];
+        
+        CGContextSetTextMatrix(context, CGAffineTransformIdentity);
+        CGContextTranslateCTM(context, 0, [self bounds].size.height);
+        CGContextScaleCTM(context, 1.0, -1.0);
+        
+        CGContextSetTextPosition(context, 5.f, [self bounds].size.height - 150.f);
+        CTLineDraw(line, context);
+        CFRelease(line);
+
+        CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString((CFAttributedStringRef)subtitleString);
+        [subtitleString release];
+        
+        CGMutablePathRef path = CGPathCreateMutable();
+        CGPathAddRect(path, NULL, CGRectMake(5.f, 6.f, [self bounds].size.width - 10.f, [self bounds].size.height - 160.f));
+        CTFrameRef frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
+        CFRelease(framesetter);
+
+        CGContextSetTextPosition(context, 0.f, 0.f); // idk if i need this but it works
+        CTFrameDraw(frame, context);
+        CFRelease(frame);
+
+        if (highlighted) {
+                [UIColorFromHexWithAlpha(0x7c7c7c, 0.4) setFill];
+                CGContextFillRect(context, rect);
+        }        
+}
+
+- (void)dealloc {
+        [$newsImage release];
+        [$newsTitle release];
+        [$newsSubtitle release];
+
+        [super dealloc];
 }
 @end
 
 @implementation NewsViewController
-- (id)init {
-	if ((self = [super init])) {
+- (id)initWithIdentifier:(NSString *)identifier {
+	if ((self = [super initWithIdentifier:identifier])) {
 		$imageData = [[NSMutableArray alloc] init];
-		$isLoading = YES;
 	}
 
 	return self;
 }
 
-- (void)loadView {
-	$tableView = [[UITableView alloc] initWithFrame:[[UIScreen mainScreen] applicationFrame] style:UITableViewStylePlain];
-	[$tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
-	[$tableView setScrollEnabled:NO];
-	[self setTableView:$tableView];
+- (void)loadContentView {
+	UITableView *tableView = [[UITableView alloc] initWithFrame:FixViewBounds([[self view] bounds]) style:UITableViewStylePlain];
+	[tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
+	[tableView setDelegate:self];
+	[tableView setDataSource:self];
 
-	$loadingCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-	LoadingIndicatorView *loadingIndicatorView = [[[LoadingIndicatorView alloc] initWithFrame:[[UIScreen mainScreen] applicationFrame]] autorelease];
-	[loadingIndicatorView setCenter:[$loadingCell center]];
-	[loadingIndicatorView setTag:1];
-	[$loadingCell addSubview:loadingIndicatorView];
+	$contentView = tableView;
 }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
-	
 	[self setTitle:@"Notícias"];
+}	
 
-	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-		NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
+- (void)reloadData {
+	[super reloadData];
+
+	NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+	NSArray *list = [document elementsMatchingPath:@"/html/body/div[@id = 'main']/div[@id = 'banner']/div[@id = 'bannerFoto']/ul/li"];
+	
+	for (XMLElement *banner in list) {
+		XMLElement *a = [banner firstElementMatchingPath:@"./a"];
+		NSString *porto, *link;
 		
-		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-		NSArray *list = [document elementsMatchingPath:@"//body/div[@id = 'main']/div[@id = 'banner']/div[@id = 'bannerFoto']/ul/li"];
-		
-		for (XMLElement *banner in list) {
-			XMLElement *span = [banner firstElementMatchingPath:@".//div/span"];
-			XMLElement *a = [banner firstElementMatchingPath:@".//a"];
-			
-			XMLElement *title = [banner firstElementMatchingPath:@".//div/h2/a"];
-			XMLElement *subtitle = [banner firstElementMatchingPath:@".//div/p/a"];
+		NSString *function = [[a attributes] objectForKey:@"onclick"];
+		if ([function length] > 0) {
+			NSRange ad = [function rangeOfString:@"Ad"];
+			link = [function substringWithRange:NSMakeRange(ad.location + 4, [function length]-(ad.location+4)-2)];
+			NSLog(@"LINK IS %@", link);
 
-			XMLElement *img = [banner firstElementMatchingPath:@".//a/img"];
-			UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[kPortoRootURL stringByAppendingString:[[img attributes] objectForKey:@"src"]]]]];
-
-			NSDictionary *result = [NSDictionary dictionaryWithObjectsAndKeys:
-				[span content], @"Porto",
-				[[a attributes] objectForKey:@"href"], @"Link",
-				[title content], @"Title",
-				[subtitle content], @"Subtitle",
-				image, @"Image",
+			NSDictionary *unidadeMap = [NSDictionary dictionaryWithObjectsAndKeys:
+				@"Morumbi", @"morum",
+				@"Valinhos", @"valin",
+				@"Panamby", @"panan",
 				nil];
-			[$imageData addObject:result];
+
+			NSString *portoId = [function substringToIndex:5];
+			porto = [unidadeMap objectForKey:portoId];
 		}
-
-		NSLog(@"ARRY %@", $imageData);
+		else {
+			link = [[a attributes] objectForKey:@"href"];
+			NSLog(@"LINK FOR INST IS %@", link);
+			porto = @"Institucional";
+		}
 		
-		NSDictionary *more = [NSDictionary dictionaryWithObjectsAndKeys:
-			@"Arquivo", @"Porto",
-			@"$AconteceNoPorto", @"Link",
-			@"Acontece no Porto", @"Title",
-			@"Veja aqui um catálogo de todas as notícias arquivadas.", @"Subtitle",
-			[UIImage imageNamed:@"acontece_no_porto.gif"], @"Image",
+		XMLElement *title = [banner firstElementMatchingPath:@"./div/h2/a"];
+		XMLElement *subtitle = [banner firstElementMatchingPath:@"./div/p/a"];
+
+		XMLElement *img = [banner firstElementMatchingPath:@".//a/img"];
+		UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[kPortoRootURL stringByAppendingString:[[img attributes] objectForKey:@"src"]]]]];
+
+		NSDictionary *result = [NSDictionary dictionaryWithObjectsAndKeys:
+			porto, @"Porto",
+			link, @"Link",
+			[title content], @"Title",
+			[subtitle content], @"Subtitle",
+			image, @"Image",
 			nil];
-		[$imageData addObject:more];
-		
-		[document release];
+		[$imageData addObject:result];
+	}
+	
+	XMLElement *box12 = [document firstElementMatchingPath:@"/html/body/div[@id='main']/section/div[@class='box1-2']"];
+	XMLElement *img = [box12 firstElementMatchingPath:@"./div[@class='box1Foto']/a/img"];
+	UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[kPortoRootURL stringByAppendingString:[[img attributes] objectForKey:@"src"]]]]];
 
-		$isLoading = NO;
-		dispatch_sync(dispatch_get_main_queue(), ^{
-			[$tableView setScrollEnabled:YES];
-			[$tableView reloadData];
-		});
-	});
+	XMLElement *extraElement = [box12 firstElementMatchingPath:@"./div[@class='box1Faixa']"];
+	XMLElement *extraElementA = [extraElement firstElementMatchingPath:@"./h4/a"];
+	NSDictionary *extra = [NSDictionary dictionaryWithObjectsAndKeys:
+		[[[extraElement firstElementMatchingPath:@"./h3"] content] substringFromIndex:3], @"Porto",
+		[[extraElementA attributes] objectForKey:@"href"], @"Link",
+		[[extraElementA firstElementMatchingPath:@"./strong"] content], @"Subtitle",
+		@"Especial", @"Title",
+		image, @"Image",
+		nil];
+	[$imageData addObject:extra];
+
+	NSDictionary *more = [NSDictionary dictionaryWithObjectsAndKeys:
+		@"Arquivo", @"Porto",
+		@"$AconteceNoPorto", @"Link",
+		@"Acontece no Porto", @"Title",
+		@"Veja aqui um catálogo de todas as notícias arquivadas.", @"Subtitle",
+		[UIImage imageNamed:@"acontece_no_porto.gif"], @"Image",
+		nil];
+	[$imageData addObject:more];
+	
+	[document release];
+
+	[self $performUIBlock:^{
+		UITableView *tableView = (UITableView *)[self contentView];
+		[tableView reloadData];
+
+		[self displayContentView];
+	}];
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return $isLoading ? 1 : [$imageData count];
+	return [$imageData count];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -3103,24 +2875,16 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-	return $isLoading ? 0.f : 30.f;
+	return 30.f;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if ($isLoading) return [[self tableView] bounds].size.height;
-
 	NSString *subtitle = [[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Subtitle"];
 	CGSize subtitleSize = [subtitle sizeWithFont:[UIFont systemFontOfSize:16.f] constrainedToSize:CGSizeMake([tableView bounds].size.width - 6.f, CGFLOAT_MAX)];
 	return 160.f + subtitleSize.height;
 }
 
-- (BOOL)tableView:(UITableView *)tableView shouldHighlightRowAtIndexPath:(NSIndexPath *)indexPath {
-	return !$isLoading;
-}
-
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-	if ($isLoading) return $loadingCell;
-	
 	static NSString *cellIdentifier = @"PortoNewsCellIdentifier";
 	NewsTableViewCell *cell = (NewsTableViewCell *)[tableView dequeueReusableCellWithIdentifier:cellIdentifier];
 	if (cell == nil) {
@@ -3136,8 +2900,6 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-	if ($isLoading) return nil;
-	
 	NSString *text = [[$imageData objectAtIndex:section] objectForKey:@"Porto"];
 	if ([text isEqualToString:@""]) text = @"Institucional";
 
@@ -3155,95 +2917,17 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-	if ($isLoading) return;
-	
 	NSString *link = [[$imageData objectAtIndex:[indexPath section]] objectForKey:@"Link"];
-	if ([link isEqualToString:@"$AconteceNoPorto"]) {
-		NewsIndexViewController *indexViewController = [[[NewsIndexViewController alloc] init] autorelease];
-		[[self navigationController] pushViewController:indexViewController animated:YES];
-	}
-	else {
-		NewsItemViewController *itemViewController = [[[NewsItemViewController alloc] initWithURL:[NSURL URLWithString:link]] autorelease];
-		[[self navigationController] pushViewController:itemViewController animated:YES];
-	}
+
+	NewsArticleWebViewController *controller = [[[NewsArticleWebViewController alloc] initWithQueue:$queue newsURL:[NSURL URLWithString:link]] autorelease];
+	[controller loadLocalFile:[[NSBundle mainBundle] pathForResource:@"news_base" ofType:@"html"]];
+	[[self navigationController] pushViewController:controller animated:YES];
 
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
 
 - (void)dealloc {
-	[$tableView release];
-	[$loadingCell release];
 	[$imageData release];
-
-	[super dealloc];
-}
-@end
-
-@implementation NewsTableViewCell
-@synthesize newsImage = $newsImage, newsTitle = $newsTitle, newsSubtitle = $newsSubtitle;
-
-- (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
-	CGContextRef context = UIGraphicsGetCurrentContext();
-
-	[[UIColor whiteColor] setFill];
-	CGContextFillRect(context, rect);
-	
-	[$newsImage drawInRect:CGRectMake(0.f, 0.f, [self bounds].size.width, 130.f)];
-
-	CGColorRef textColor = [[UIColor blackColor] CGColor];
-
-	NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
-	CTFontRef bodyFont = CTFontCreateWithName((CFStringRef)systemFont, 16.f, NULL);
-	CTFontRef headFont = CTFontCreateCopyWithSymbolicTraits(bodyFont, 18.f, NULL, kCTFontBoldTrait, kCTFontBoldTrait);
-
-	NSDictionary *fontAttributes = [NSDictionary dictionaryWithObjectsAndKeys:
-		(id)bodyFont, (id)kCTFontAttributeName,
-		textColor, (id)kCTForegroundColorAttributeName,
-		nil];
-	NSDictionary *boldFontAttributes = [NSDictionary dictionaryWithObjectsAndKeys:
-		(id)headFont, (id)kCTFontAttributeName,
-		textColor, (id)kCTForegroundColorAttributeName,
-		nil];
-	CFRelease(bodyFont);
-	CFRelease(headFont);
-	
-	NSAttributedString *titleString = [[NSAttributedString alloc] initWithString:$newsTitle attributes:boldFontAttributes];
-	NSAttributedString *subtitleString = [[NSAttributedString alloc] initWithString:$newsSubtitle attributes:fontAttributes];
-
-	CTLineRef line = CTLineCreateWithAttributedString((CFAttributedStringRef)titleString);
-	[titleString release];
-	
-	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
-	CGContextTranslateCTM(context, 0, [self bounds].size.height);
-	CGContextScaleCTM(context, 1.0, -1.0);
-	
-	CGContextSetTextPosition(context, 5.f, [self bounds].size.height - 150.f);
-	CTLineDraw(line, context);
-	CFRelease(line);
-
-	CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString((CFAttributedStringRef)subtitleString);
-	[subtitleString release];
-	
-	CGMutablePathRef path = CGPathCreateMutable();
-	CGPathAddRect(path, NULL, CGRectMake(5.f, 6.f, [self bounds].size.width - 10.f, [self bounds].size.height - 160.f));
-	CTFrameRef frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
-	CFRelease(framesetter);
-
-	CGContextSetTextPosition(context, 0.f, 0.f); // idk if i need this but it works
-	CTFrameDraw(frame, context);
-	CFRelease(frame);
-
-	if (highlighted) {
-		[UIColorFromHexWithAlpha(0x7c7c7c, 0.4) setFill];
-		CGContextFillRect(context, rect);
-	}	
-}
-
-- (void)dealloc {
-	[$newsImage release];
-	[$newsTitle release];
-	[$newsSubtitle release];
-
 	[super dealloc];
 }
 @end
@@ -4411,7 +4095,7 @@ you will still get a valid token for name "Funcionário".
 		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppCirculares"] autorelease];
 		
 		UITapGestureRecognizer *tapGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tappedScrollView:)];
-		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(15.f, [cell bounds].origin.y, [cell bounds].size.width - 15.f, [cell bounds].size.height)];
+		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(15.f, [cell bounds].origin.y, [cell bounds].size.width - 18.f, [cell bounds].size.height)];
 		[scrollView setBackgroundColor:[UIColor whiteColor]];
 		[scrollView addGestureRecognizer:tapGestureRecognizer];
 		[tapGestureRecognizer release];
@@ -4576,7 +4260,7 @@ static void DebugInit() {
 	
 	$window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
 	
-	NewsViewController *newsViewController = [[[NewsViewController alloc] init] autorelease];
+	NewsViewController *newsViewController = [[[NewsViewController alloc] initWithIdentifier:@"news"] autorelease];
 	UINavigationController *newsNavController = [[[UINavigationController alloc] initWithRootViewController:newsViewController] autorelease];
 	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:nil tag:0] autorelease]];
 	
@@ -4605,7 +4289,8 @@ static void DebugInit() {
 	$tabBarController = [[UITabBarController alloc] init];
 	[$tabBarController setViewControllers:controllers];
 
-	[[UINavigationBar appearance] setTintColor:UIColorFromHexWithAlpha(0x1c2956, 1.f)];
+	if (!SYSTEM_VERSION_GT_EQ(@"7.0"))
+		[[UINavigationBar appearance] setTintColor:UIColorFromHexWithAlpha(0x1c2956, 1.f)];
 
 	[$window setRootViewController:$tabBarController];
 	[$window makeKeyAndVisible];

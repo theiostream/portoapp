@@ -2782,7 +2782,7 @@ you will still get a valid token for name "Funcionário".
 		// Example: https://www.portoseguro.org.br/noticia/detalhe/prazer-pela-cincia
 		dispatch_sync(dispatch_get_main_queue(), ^{
 			// Firstly, we add Porto's data into our base html.
-			[self executeJavascript:[NSString stringWithFormat:@"var el = document.getElementById('portoAppInsertContent'); el.innerHTML='%@';", [[[newsContent componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" "] stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"]]];
+			[self executeJavascript:[NSString stringWithFormat:@"var el = document.getElementById('portoAppInsertContent'); el.innerHTML='%@';", [[[[newsContent componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" "] stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"] stringByReplacingOccurrencesOfString:@"\t" withString:@"\t\t"]]];
 			
 			// Secondly, we fix an error thanks to them not checking their quotations.
 			/* Source code: <div id="share2"><div class="fb-share-button" data-href=""https://www.portoseguro.org.br//noticia/unidade/morumbi/inovao-com-mit"" data-type="box_count"></div></div> (works on WebKit!)
@@ -2794,7 +2794,7 @@ you will still get a valid token for name "Funcionário".
 			
 			// FIXME: Come on Daniel, there's a *lot* of room for optimization here.
 			// Thirdly, we optimize the page for a better reading experience.
-			[self executeJavascript:@"var p = document.getElementsByTagName('p'); for(i=0; i<p.length; i++) { p[i].style.fontSize='28px'; p[i].style.lineHeight='1.5'; }"];
+			[self executeJavascript:@"var p = document.getElementsByTagName('p'); for(i=0; i<p.length; i++) { p[i].style.fontSize='28px'; p[i].style.fontFamily='Helvetica Neue'; p[i].style.lineHeight='1.4'; }"];
 			/* " do not remove this comment else vim will get mad. */
 			[self executeJavascript:@"var el = document.getElementsByTagName('h2')[0]; el.style.fontSize='48px';"];
 			[self executeJavascript:@"var el = document.getElementsByTagName('h4')[0]; el.style.fontSize='54px';"];
@@ -2806,10 +2806,18 @@ you will still get a valid token for name "Funcionário".
 
 - (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
 	if (navigationType == UIWebViewNavigationTypeLinkClicked) {
-		NavigationWebBrowserController *controller = [[[NavigationWebBrowserController alloc] initWithQueue:$queue] autorelease];
-		[controller loadRequest:request];
-		[[self navigationController] pushViewController:controller animated:YES];
-
+		NSURL *url = [request URL];
+		if (![[url host] isEqualToString:@"www.portoseguro.org.br"] || [[url absoluteString] rangeOfString:@"noticia"].location == NSNotFound) {
+			NavigationWebBrowserController *browser = [[[NavigationWebBrowserController alloc] initWithQueue:$queue] autorelease];
+			[browser loadRequest:request];
+			[[self navigationController] pushViewController:browser animated:YES];
+		}
+		else {
+			NewsArticleWebViewController *article = [[[NewsArticleWebViewController alloc] initWithQueue:$queue newsURL:url] autorelease];
+			[article loadLocalFile:[[NSBundle mainBundle] pathForResource:@"news_base" ofType:@"html"]];
+			[[self navigationController] pushViewController:article animated:YES];
+		}
+		
 		return NO;
 	}
 

@@ -425,6 +425,8 @@ static NSString *GetATagHref(NSString *aTag) {
 
 /* Constants {{{ */
 
+#define kReportIssue "\n\nPara averiguarmos o problema, mande um email para q@theiostream.com descrevendo o erro."
+
 #define kPortoRootURL @"http://www.portoseguro.org.br/"
 #define kPortoRootCircularesPage @"http://www.circulares.portoseguro.org.br/"
 
@@ -620,11 +622,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @interface FailView : UIView {
 	UIView *centerView;
-	UIImageView *imageView;
 	UILabel *label;
+	UILabel *titleLabel;
 }
 @property(nonatomic, retain) NSString *text;
-@property(nonatomic, retain) UIImage *image;
+@property(nonatomic, retain) NSString *title;
 @end
 
 /* }}} */
@@ -641,6 +643,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	LoadingIndicatorView *$loadingView;
 	FailView *$failureView;
 	UIView *$contentView;
+
+	UIBarButtonItem *$refreshButton;
+	UIBarButtonItem *$spinnerButton;
 }
 
 - (WebDataViewController *)initWithIdentifier:(NSString *)identifier;
@@ -657,7 +662,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)displayLoadingView;
 - (void)hideLoadingView;
-- (void)displayFailViewWithImage:(UIImage *)img text:(NSString *)text;
+- (void)displayFailViewWithTitle:(NSString *)title text:(NSString *)text;
 - (void)displayContentView;
 
 - (void)$performUIBlock:(void(^)())block;
@@ -958,7 +963,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
         [label_ setTextColor:[UIColor grayColor]];
         // [label_ setShadowColor:[UIColor whiteColor]];
         // [label_ setShadowOffset:CGSizeMake(0, 1)];
-        [label_ setText:@"Loading..."];
+        [label_ setText:@"Carregando..."];
         [container_ addSubview:label_];
         
         [self addSubview:container_];
@@ -1015,20 +1020,27 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* Fail Views {{{ */
 
 @implementation FailView
-@synthesize text, image;
+@synthesize text, title;
 
 - (id)initWithFrame:(CGRect)frame {
 	if ((self = [super initWithFrame:frame])) {
-		[self setBackgroundColor:[UIColor redColor]];
-
-		centerView = [[UIView alloc] initWithFrame:CGRectZero];
-		[centerView setBackgroundColor:[UIColor yellowColor]];
+		[self setBackgroundColor:[UIColor whiteColor]];
 		
-		imageView = [[UIImageView alloc] initWithFrame:CGRectZero];
-		[centerView addSubview:imageView];
-		[imageView release];
+		centerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [[UIScreen mainScreen] bounds].size.width, 0.f)];
+		
+		titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+		[titleLabel setFont:[UIFont fontWithName:@"HelveticaNeue" size:18.f]];
+		[titleLabel setTextAlignment:NSTextAlignmentCenter];
+		[titleLabel setTextColor:[UIColor lightGrayColor]];
+		[titleLabel setNumberOfLines:0];
+		[centerView addSubview:titleLabel];
+		[titleLabel release];
 		
 		label = [[UILabel alloc] initWithFrame:CGRectZero];
+		[label setFont:[UIFont fontWithName:@"HelveticaNeue" size:13.f]];
+		[label setTextAlignment:NSTextAlignmentCenter];
+		[label setTextColor:[UIColor lightGrayColor]];
+		[label setNumberOfLines:0];
 		[centerView addSubview:label];
 		[label release];
 
@@ -1039,20 +1051,38 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return self;
 }
 
+- (void)setTitle:(NSString *)title_ {
+	title = [title_ retain];
+	[titleLabel setText:title];
+}
+
+- (void)setText:(NSString *)text_ {
+	NSLog(@"SET TEXT FOR VIEW %p %@", self, text_);
+        text = [text_ retain];
+	[label setText:text];
+}
+
 - (void)layoutSubviews {
 	[super layoutSubviews];
-    
-	CGSize textSize = [text sizeWithFont:[UIFont systemFontOfSize:13.f] constrainedToSize:CGSizeMake(centerView.bounds.size.width, CGFLOAT_MAX) lineBreakMode:NSLineBreakByWordWrapping];
-
-    
-	// draw
+    	
+	CGSize titleSize = [text sizeWithFont:[UIFont fontWithName:@"HelveticaNeue" size:18.f] constrainedToSize:CGSizeMake([titleLabel bounds].size.width, CGFLOAT_MAX)/* lineBreakMode:NSLineBreakByWordWrapping*/];
+        CGSize textSize = [text sizeWithFont:[UIFont fontWithName:@"HelveticaNeue" size:13.f] constrainedToSize:CGSizeMake([label bounds].size.width, CGFLOAT_MAX)/* lineBreakMode:NSLineBreakByWordWrapping*/];
+        
+        CGFloat sumHeight = titleSize.height + textSize.height + 15.f;
+        [centerView setFrame:CGRectMake([centerView frame].origin.x, [self bounds].size.height/2 - sumHeight/2, [centerView frame].size.width, sumHeight)];
+        
+	[titleLabel sizeToFit];
+	[titleLabel setFrame:CGRectMake(0.f, 0.f, [titleLabel frame].size.width, titleSize.height)];
+	[titleLabel setCenter:CGPointMake([centerView center].x, [titleLabel center].y)];
+	
+	[label sizeToFit];
+	[label setFrame:CGRectMake(0.f, [centerView bounds].size.height - textSize.height, [label frame].size.width, textSize.height)];
+	[label setCenter:CGPointMake([centerView center].x, [label center].y)];
 }
 
 - (void)dealloc {
 	[text release];
-	[image release];
-
-	//[centerView release];
+	[title release];
 
 	[super dealloc];
 }
@@ -2089,12 +2119,14 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)loadView {
 	[super loadView];
+	
+	$refreshButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(refresh)];
+	$spinnerButton = [[UIBarButtonItem alloc] initWithCustomView:[[[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray] autorelease]];
 
 	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
 	[[self view] addSubview:$loadingView];
 
 	$failureView = [[FailView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
-	[$failureView setBackgroundColor:[UIColor redColor]];
 	[$failureView setHidden:YES];
 	[[self view] addSubview:$failureView];
 	
@@ -2129,9 +2161,24 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)refresh {
-	[self $performUIBlock:^{ [self displayLoadingView]; }];
-	if ([NSThread isMainThread]) dispatch_async($queue, ^{ [self reloadData]; });
-	else [self reloadData];
+	[self $performUIBlock:^{
+		[self displayLoadingView];
+		
+		[[self navigationItem] setRightBarButtonItem:$spinnerButton];
+		[(UIActivityIndicatorView *)[$spinnerButton customView] startAnimating];
+	}];
+	
+	void (^reloadData)() = ^{
+                [self reloadData];
+                
+		[self $performUIBlock:^{
+			[(UIActivityIndicatorView *)[$spinnerButton customView] stopAnimating];
+			[[self navigationItem] setRightBarButtonItem:$refreshButton];
+		}];
+	};
+	
+	if ([NSThread isMainThread]) dispatch_async($queue, reloadData);
+	else reloadData();
 }
 
 - (void)reloadData {
@@ -2178,12 +2225,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	}];
 }
 
-- (void)displayFailViewWithImage:(UIImage *)image text:(NSString *)text {
+- (void)displayFailViewWithTitle:(NSString *)title text:(NSString *)text {
 	[self $performUIBlock:^{
 		[self hideLoadingView];
 		[self hideContentView];
 		
-		[$failureView setImage:image];
+		[$failureView setTitle:title];
 		[$failureView setText:text];
 		[$failureView setNeedsLayout];
 		[$failureView setHidden:NO];
@@ -2218,6 +2265,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)$freeViews {
+	[$refreshButton release];
+
 	[$loadingView release];
 	[$failureView release];
 	
@@ -2780,11 +2829,14 @@ you will still get a valid token for name "Funcionário".
 
 - (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
         CGContextRef context = UIGraphicsGetCurrentContext();
+        CGContextSetTextMatrix(context, CGAffineTransformIdentity);
+        CGContextTranslateCTM(context, 0, [self bounds].size.height);
+        CGContextScaleCTM(context, 1.0, -1.0);
 
         [[UIColor whiteColor] setFill];
         CGContextFillRect(context, rect);
         
-        [$newsImage drawInRect:CGRectMake(0.f, 0.f, [self bounds].size.width, 130.f)];
+	CGContextDrawImage(context, CGRectMake(0.f, [self bounds].size.height-130.f, [self bounds].size.width, 130.f), [$newsImage CGImage]);
 
         CGColorRef textColor = [[UIColor blackColor] CGColor];
 
@@ -2808,10 +2860,6 @@ you will still get a valid token for name "Funcionário".
 
         CTLineRef line = CTLineCreateWithAttributedString((CFAttributedStringRef)titleString);
         [titleString release];
-        
-        CGContextSetTextMatrix(context, CGAffineTransformIdentity);
-        CGContextTranslateCTM(context, 0, [self bounds].size.height);
-        CGContextScaleCTM(context, 1.0, -1.0);
         
         CGContextSetTextPosition(context, 5.f, [self bounds].size.height - 150.f);
         CTLineDraw(line, context);
@@ -2869,8 +2917,14 @@ you will still get a valid token for name "Funcionário".
 
 - (void)reloadData {
 	[super reloadData];
+	[$imageData removeAllObjects];
 
 	NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
+	if (data == nil) {
+		[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
+		return;
+	}
+
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 	NSArray *list = [document elementsMatchingPath:@"/html/body/div[@id = 'main']/div[@id = 'banner']/div[@id = 'bannerFoto']/ul/li"];
 	
@@ -3701,15 +3755,14 @@ you will still get a valid token for name "Funcionário".
 	return self;
 }
 
-- (void)viewDidLoad {
-	[super viewDidLoad];
-	[self setTitle:@"Notas"];
-}
-
 - (void)reloadData {
 	[super reloadData];
 	SessionController *sessionController = [SessionController sharedInstance];
 	
+	if ($rootContainer != nil) {
+		[$rootContainer release];
+	}
+
 	//#define READ_FROM_LOCAL_DEBUG_HTML
 	#ifdef READ_FROM_LOCAL_DEBUG_HTML
 	NSData *data = [NSData dataWithContentsOfFile:@"/Users/BobNelson/Documents/Projects/PortoApp/3rdp.html"];
@@ -3946,10 +3999,16 @@ you will still get a valid token for name "Funcionário".
 - (void)reloadData {
 	[super reloadData];
 
+	[$yearOptions removeAllObjects];
+	[$periodOptions removeAllObjects];
+
 	SessionController *sessionController = [SessionController sharedInstance];
-	if (![sessionController hasSession]) [self displayFailViewWithImage:nil text:@"Sem autenticação.\nRealize um login no menu de Contas."];
+	if (![sessionController hasSession]) {
+		[self displayFailViewWithTitle:@"Sem autenticação" text:@"Realize o login no menu de Contas."];
+		return;
+	}
 	if (![sessionController gradeID]) {
-		[self displayFailViewWithImage:nil text:@"Falha ao obter o ID de Notas.\n\nEstamos trabalhando para consertar este problema."];
+		[self displayFailViewWithTitle:@"Sem ID de Notas" text:@kReportIssue];
 		return;
 	}
 	
@@ -3962,7 +4021,7 @@ you will still get a valid token for name "Funcionário".
 	NSURLResponse *response;
 	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
 	if (data == nil) {
-		[self displayFailViewWithImage:nil text:@"Falha ao carregar página.\n\nCheque sua conexão de Internet."];
+		[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
 		return;
 	}
 	
@@ -3977,7 +4036,7 @@ you will still get a valid token for name "Funcionário".
 	}
 
 	if ($viewState == nil || $eventValidation == nil) {
-		[self displayFailViewWithImage:nil text:@"Falha ao interpretar página (notasparciais.aspx:State/Validation)\n\nEstamos trabalhando para consertar este problema."];
+		[self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: notasparciais.aspx:ViewState/EventValidation" kReportIssue];
 		return;
 	}
 	
@@ -3996,7 +4055,7 @@ you will still get a valid token for name "Funcionário".
 	[$yearOptions addObject:pa];
 	
 	if ([$yearOptions count] == 0) {
-		[self displayFailViewWithImage:nil text:@"Falha ao interpretar página (notasparciais.aspx:Select)\n\nEstamos trabalhando para consertar este problema."];
+		[self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: notasparciais.aspx:Select" kReportIssue];
 		return;
 	}
 
@@ -4062,6 +4121,7 @@ you will still get a valid token for name "Funcionário".
 	NSString *periodValue = periodValue_->obj2;
 
 	GradesListViewController *listController = [[[GradesListViewController alloc] initWithYear:yearValue period:periodValue viewState:$viewState eventValidation:$eventValidation] autorelease];
+	[listController setTitle:[NSString stringWithFormat:@"%@ (%@)", periodValue_->obj1, yearValue_->obj1]];
 	[[self navigationController] pushViewController:listController animated:YES];
 
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
@@ -4108,10 +4168,13 @@ you will still get a valid token for name "Funcionário".
 		[self setTitle:@"Circulares"];
 		
 		SessionController *sessionController = [SessionController sharedInstance];
-		if (![sessionController hasSession]) [self displayFailViewWithImage:nil text:@"Sem autenticação.\nRealize um login no menu de Contas."];
+		if (![sessionController hasSession]) {
+			[self displayFailViewWithTitle:@"Sem autenticação." text:@"Realize login no menu de Contas."];
+			return;
+		}
 		if (![sessionController papersID]) {
                         NSLog(@"err id");
-			[self displayFailViewWithImage:nil text:@"Falha ao obter o ID de Circulares.\n\nEstamos trabalhando para consertar este problema."];
+			[self displayFailViewWithTitle:@"Sem ID de Circulares" text:@kReportIssue];
 			return;
 		}
 
@@ -4120,7 +4183,7 @@ you will still get a valid token for name "Funcionário".
 		NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
 		if (data == nil) {
                         NSLog(@"err intern");
-			[self displayFailViewWithImage:nil text:@"Falha ao carregar página.\n\nCheque sua conexão de Internet."];
+			[self displayFailViewWithTitle:@"Falha ao carregar a página" text:@"Cheque sua conexão de Internet."];
 			return;
 		}
 
@@ -4136,15 +4199,14 @@ you will still get a valid token for name "Funcionário".
 		
 		int blen = base64_decode([value UTF8String], [value length], &str);
 		if (blen < 0) {
-			NSLog(@"err blen");
-                        [self displayFailViewWithImage:nil text:@"Erro interpretando página.\nEstamos trabalhando no problema.\n\n(Base64)"];
+                        [self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: base64_decode()" kReportIssue];
 			return;
 		}
 		
 		$viewState = parse_viewstate((unsigned char **)&str, true);
 		if ($viewState->stateType == kViewStateTypeError) {
 			NSLog(@"err vs");
-                        [self displayFailViewWithImage:nil text:@"Erro interpretando página.\nEstamos trabalhando no problema.\n\n(ViewState)"];
+                        [self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: parse_viewstate()" kReportIssue];
 			return;
 		}
 		
@@ -4160,6 +4222,8 @@ you will still get a valid token for name "Funcionário".
                 NSLog(@"DISPLAY CONTENT VIEW!!");
                 [self displayContentView];
         }];
+
+	NSLog(@"END RELOADDATA");	
 }
 
 - (void)loadContentView {
@@ -4184,7 +4248,7 @@ you will still get a valid token for name "Funcionário".
 		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppCirculares"] autorelease];
 		
 		UITapGestureRecognizer *tapGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tappedScrollView:)];
-		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(15.f, [cell bounds].origin.y, [cell bounds].size.width - 18.f, [cell bounds].size.height)];
+		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(15.f, [cell bounds].origin.y, [cell bounds].size.width - 20.f, [cell bounds].size.height)];
 		[scrollView setBackgroundColor:[UIColor whiteColor]];
 		[scrollView addGestureRecognizer:tapGestureRecognizer];
 		[tapGestureRecognizer release];
@@ -4219,7 +4283,7 @@ you will still get a valid token for name "Funcionário".
 	UILabel *label = (UILabel *)[scrollView viewWithTag:88];
 	CGFloat width = [endText sizeWithFont:[label font]].width;
 	
-	[scrollView setFrame:(CGRect){[scrollView frame].origin, {isFolder ? [scrollView frame].size.width-15.f : [scrollView frame].size.width, [scrollView frame].size.height}}];
+	[scrollView setFrame:(CGRect){[scrollView frame].origin, {isFolder ? ([cell bounds].size.width-20.f)-15.f : [scrollView frame].size.width, [scrollView frame].size.height}}];
 	[scrollView setContentSize:CGSizeMake(width < [scrollView bounds].size.width ? [scrollView bounds].size.width : width, [scrollView contentSize].height)];
 	
 	[label setFrame:(CGRect){[label frame].origin, {[scrollView contentSize].width, [label frame].size.height}}];

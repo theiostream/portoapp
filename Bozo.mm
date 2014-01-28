@@ -436,6 +436,8 @@ static NSString *GetATagHref(NSString *aTag) {
 /* Constants {{{ */
 
 #define kReportIssue "\n\nPara averiguarmos o problema, mande um email para q@theiostream.com descrevendo o erro."
+#define kServerError "\n\nTente recarregar a página ou espere o site se recuperar de algum problema."
+#define kMissingGradesBacktraceStackTop @"notasParciaisWeb.NotasParciais.carregaPagina(String matricula) in D:\\Projetos\\Notas_Parciais\\notasParciaisWeb\\NotasParciais.aspx.cs:148"
 
 #define kPortoRootURL @"http://www.portoseguro.org.br/"
 #define kPortoRootCircularesPage @"http://www.circulares.portoseguro.org.br/"
@@ -1062,6 +1064,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)setTitle:(NSString *)title_ {
+	NSLog(@"SET TITLE FOR VIEW %p %@", self, title_);
 	title = [title_ retain];
 	[titleLabel setText:title];
 }
@@ -1075,19 +1078,23 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)layoutSubviews {
 	[super layoutSubviews];
     	
-	CGSize titleSize = [text sizeWithFont:[UIFont fontWithName:@"HelveticaNeue" size:18.f] constrainedToSize:CGSizeMake([titleLabel bounds].size.width, CGFLOAT_MAX)/* lineBreakMode:NSLineBreakByWordWrapping*/];
-        CGSize textSize = [text sizeWithFont:[UIFont fontWithName:@"HelveticaNeue" size:13.f] constrainedToSize:CGSizeMake([label bounds].size.width, CGFLOAT_MAX)/* lineBreakMode:NSLineBreakByWordWrapping*/];
+	CGSize titleSize = [title sizeWithFont:[UIFont fontWithName:@"HelveticaNeue" size:18.f] constrainedToSize:CGSizeMake([self bounds].size.width, CGFLOAT_MAX)/* lineBreakMode:NSLineBreakByWordWrapping*/];
+        CGSize textSize = [text sizeWithFont:[UIFont fontWithName:@"HelveticaNeue" size:13.f] constrainedToSize:CGSizeMake([self bounds].size.width, CGFLOAT_MAX)/* lineBreakMode:NSLineBreakByWordWrapping*/];
         
         CGFloat sumHeight = titleSize.height + textSize.height + 15.f;
         [centerView setFrame:CGRectMake([centerView frame].origin.x, [self bounds].size.height/2 - sumHeight/2, [centerView frame].size.width, sumHeight)];
         
-	[titleLabel sizeToFit];
+	[titleLabel setFrame:CGRectMake(0.f, 0.f, [self bounds].size.width, titleSize.height)];
+	[label setFrame:CGRectMake(0.f, [centerView bounds].size.height - textSize.height, [self bounds].size.width, textSize.height)];
+	NSLog(@"FRAMES %@ %@", NSStringFromCGRect([titleLabel frame]), NSStringFromCGRect([label frame]));
+
+	/*[titleLabel sizeToFit];
 	[titleLabel setFrame:CGRectMake(0.f, 0.f, [titleLabel frame].size.width, titleSize.height)];
 	[titleLabel setCenter:CGPointMake([centerView center].x, [titleLabel center].y)];
 	
 	[label sizeToFit];
 	[label setFrame:CGRectMake(0.f, [centerView bounds].size.height - textSize.height, [label frame].size.width, textSize.height)];
-	[label setCenter:CGPointMake([centerView center].x, [label center].y)];
+	[label setCenter:CGPointMake([centerView center].x, [label center].y)];*/
 }
 
 - (void)dealloc {
@@ -1428,7 +1435,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[$addGradeButton setBackgroundColor:[UIColor clearColor]];
 		[$addGradeButton setTitleColor:[$addGradeButton tintColor] forState:UIControlStateNormal];
 		[$addGradeButton setTitleShadowColor:[UIColor blackColor] forState:UIControlStateHighlighted];
-		[$addGradeButton addTarget:self action:@selector(thisIsACoolMethodButIAmSadIAlsoLoveMaximusAndCris:) forControlEvents:UIControlEventTouchUpInside];
+		[$addGradeButton addTarget:self action:@selector(thisIsACoolMethodButIAmSadIAlsoLoveCris:) forControlEvents:UIControlEventTouchUpInside];
 		[self addSubview:$addGradeButton];
 		
 		$pickerSheet = [[PickerActionSheet alloc] initWithHeight:260.f pieChartView:self];
@@ -1596,7 +1603,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CFRelease(framesetter);
 }
 
-- (void)thisIsACoolMethodButIAmSadIAlsoLoveMaximusAndCris:(UIButton *)button {
+- (void)thisIsACoolMethodButIAmSadIAlsoLoveCris:(UIButton *)button {
 	[$pickerSheet display];
 }
 
@@ -2126,7 +2133,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		asprintf(&identifier, "am.theiostre.portoapp.webdata.%s", [identifier_ UTF8String]);
 		
 		$queue = dispatch_queue_create(identifier, NULL);
-		dispatch_retain($queue);
+		//dispatch_retain($queue);
+		free(identifier);
 	}
 
 	return self;
@@ -2281,6 +2289,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)$freeViews {
 	[$refreshButton release];
+	[$spinnerButton release];
 
 	[$loadingView release];
 	[$failureView release];
@@ -3129,7 +3138,7 @@ you will still get a valid token for name "Funcionário".
 
 - (id)init {
 	if ((self = [super init])) {
-		LOG_ALLOC(self);
+		//LOG_ALLOC(self);
 		debugLevel = 0;
 		isBonus = NO;
 	}
@@ -3813,11 +3822,10 @@ you will still get a valid token for name "Funcionário".
 - (void)reloadData {
 	[super reloadData];
 	SessionController *sessionController = [SessionController sharedInstance];
-	
+
 	if ($rootContainer != nil) {
 		[$rootContainer release];
 	}
-	
 	[self $performUIBlock:^{
 		[[$contentView subviews] makeObjectsPerformSelector:@selector(removeFromSuperview)];
 	}];
@@ -3840,6 +3848,37 @@ you will still get a valid token for name "Funcionário".
 	NSError *error;
 
 	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:&error];
+	if (data == nil) {
+		[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
+		return;
+	}
+
+	NSInteger statusCode = [(NSHTTPURLResponse *)response statusCode];
+	if (statusCode != 200) {
+		if (statusCode == 500) {
+			// The JavaScript handler for the 500 error tells me to contact the IT team.
+			// And it also redirects me to a login page which I CANNOT USE SINCE IT'S A WHOLE DIFFERENT LOGIN DOMAIN
+			// WHAT THE FUCK
+
+			// So they throw a 500 both for missing grades /and/ general-errors.
+			// It's up to us to determine which one of those it is.
+			// Let's hope a guess with the expected backtrace is good enough.
+
+			NSString *backtrace = [NSString stringWithUTF8String:(char *)[data bytes]];
+			if ([backtrace rangeOfString:kMissingGradesBacktraceStackTop].location != NSNotFound)
+				[self displayFailViewWithTitle:@"Notas Não Encontradas" text:@"O período selecionado não pôde ser encontrado.\n\n(Há uma chance de isto ser um erro HTTP 500. Neste caso, tente recarregar a página ou espere o site se recuperar do problema.)"];
+			else
+				[self displayFailViewWithTitle:@"Erro HTTP 500" text:@"Houve um erro de servidor." kServerError];
+		}
+		else if (statusCode == 12030) {
+			[self displayFailViewWithTitle:@"Erro HTTP 12030" text:@"A conexão com o servidor foi abortada (e o Porto está preparado para isso com um alerta na página de Notas!)." kServerError];
+		}
+		else {
+			[self displayFailViewWithTitle:[NSString stringWithFormat:@"Erro HTTP %d", statusCode] text:@"Houve um erro de servidor desconhecido." kServerError];
+		}
+
+		return;
+	}
 	#endif
 
 	// i used this because 3rd period of 2013 was going to be concluded
@@ -3865,6 +3904,7 @@ you will still get a valid token for name "Funcionário".
 	NSMutableArray *subjectContainers = [NSMutableArray array];
 	for (XMLElement *container in subjectElements) {
 		GradeContainer *subjectContainer = [[GradeContainer alloc] init];
+		NSLog(@"ALLOCATED RIGHT? %p", subjectContainer);
 		[subjectContainer setSuperContainer:$rootContainer];
 		[subjectContainer setDebugLevel:1];
 		[subjectContainer makeValueTen];
@@ -3882,6 +3922,7 @@ you will still get a valid token for name "Funcionário".
 		else if ([subjectName isEqualToString:@"ARTES VISUAIS"]) continue; // Fix a (porto) issue where we get DE + non-DE Kunst (one would hope this doesn't break other dudes' grades)
 
 		[subjectContainer setName:subjectName];
+		NSLog(@"INIT SUBJECT CONTAINER WITH NAME %@ %p", subjectName, subjectContainer);
 		
 		NSString *totalGrade_ = [[container firstElementMatchingPath:@"./h2[@class='fright ']/span/span[1]/span"] content];
 		NSString *totalGrade;
@@ -3989,6 +4030,7 @@ you will still get a valid token for name "Funcionário".
 		[subjectContainer setSubGradeContainers:subGradeContainers];
 		[subjectContainer setSubBonusContainers:subBonusContainers];
 		[subjectContainers addObject:subjectContainer];
+		NSLog(@"RELEASE! %p", subjectContainer);
 		[subjectContainer release];
 	}
 
@@ -4112,22 +4154,23 @@ you will still get a valid token for name "Funcionário".
 	XMLElement *yearSelect = [document firstElementMatchingPath:[m3tPath stringByAppendingString:@"/select[@name='ctl00$ContentPlaceHolder1$ddlAno']"]];
 	XMLElement *periodSelect = [document firstElementMatchingPath:[m3tPath stringByAppendingString:@"/select[@name='ctl00$ContentPlaceHolder1$ddlEtapa']"]];
 	
-	/*NSArray *yearOptionElements = [yearSelect elementsMatchingPath:@"./option"];
+	NSArray *yearOptionElements = [yearSelect elementsMatchingPath:@"./option"];
 	for (XMLElement *element in yearOptionElements) {
 		Pair *p = [[[Pair alloc] initWithObjects:[element content], [[element attributes] objectForKey:@"value"]] autorelease];
 		[$yearOptions addObject:p];
-	}*/
-	// Unfortunately, it's impossible to attempt any debugging with the server at its current state.
-	// Maybe next year.
-	Pair *pa = [[[Pair alloc] initWithObjects:@"2013", @"2013"] autorelease];
-	[$yearOptions addObject:pa];
+	}
 	
 	if ([$yearOptions count] == 0) {
 		[self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: notasparciais.aspx:Select" kReportIssue];
                 [document release];
 		return;
 	}
-
+	
+	/* So, one may wonder like "wait what we're only checking the options for the currently selected year and not for all
+	 * years.
+	 * The thing is, such information for each year is not in the view state and I will /NOT/ do a fuckload of postbacks
+	 * to this page just to fucking find out something that seems to be constant across years.
+	 * So that'll be it until Porto decides to change how stuff currently works. */
 	for (Pair *year in $yearOptions) {
 		NSArray *periodOptionElements = [periodSelect elementsMatchingPath:@"./option"];
 		NSMutableArray *periods = [NSMutableArray array];

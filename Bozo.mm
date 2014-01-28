@@ -49,6 +49,7 @@ Code taken from third parties:
 #import <Security/Security.h>
 #import <CoreText/CoreText.h>
 #import <QuartzCore/QuartzCore.h>
+#include <dlfcn.h>
 
 #include "viewstate/viewstate.h"
 /* }}} */
@@ -56,12 +57,14 @@ Code taken from third parties:
 /* External {{{ */
 
 #import "External.mm"
+static UIImage *(*_UIImageWithName)(NSString *);
 
 /* }}} */
 
 /* Macros {{{ */
 
-#define SYSTEM_VERSION_GT_EQ(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
+#define SYSTEM_VERSION_GT_EQ(v) \
+	([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
 
 #define NUMBER_YES [NSNumber numberWithBool:YES]
 #define NUMBER_NO [NSNumber numberWithBool:NO]
@@ -91,6 +94,13 @@ Code taken from third parties:
 	CGContextScaleCTM(context, 1.0, -1.0);
 
 #define AmericanLocale [NSLocale localeWithLocaleIdentifier:@"en_US"]
+
+#define LOG_ALLOC(ptr) \
+	NSLog(@"%p: ALLOC (%d)", ptr, [ptr retainCount]);
+#define LOG_RETAIN(ptr) \
+	NSLog(@"%p: RETAI (%d)", ptr, [ptr retainCount]);
+#define LOG_RELEASE(ptr) \
+	NSLog(@"%p: RELES (%d)", ptr, [ptr retainCount]);
 
 /* }}} */
 
@@ -827,7 +837,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @property(nonatomic, retain) NSMutableArray *subGradeContainers;
 @property(nonatomic, retain) NSMutableArray *subBonusContainers;
-@property(nonatomic, retain) GradeContainer *superContainer;
+@property(nonatomic, assign) GradeContainer *superContainer;
 
 @property(nonatomic, assign) BOOL isBonus;
 @property(nonatomic, assign) NSUInteger section;
@@ -1205,7 +1215,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)dealloc {
 	[container release];
 	[text release];
+	
 	[layer release];
+
 	[super dealloc];
 }
 @end
@@ -2381,6 +2393,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	LoadingIndicatorView *loadingIndicatorView = [[LoadingIndicatorView alloc] initWithFrame:CGRectMake(0, 0, 200, 50)];
 	[loadingIndicatorView setCenter:[$loadingCell center]];
 	[$loadingCell addSubview:loadingIndicatorView];
+        [loadingIndicatorView release];
 	
 	$topImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0.f, 0.f, [$tableView bounds].size.width, 40.f)];
     
@@ -2879,6 +2892,7 @@ you will still get a valid token for name "Funcionário".
         CGMutablePathRef path = CGPathCreateMutable();
         CGPathAddRect(path, NULL, CGRectMake(5.f, 6.f, [self bounds].size.width - 10.f, [self bounds].size.height - 160.f));
         CTFrameRef frame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
+        CFRelease(path);
         CFRelease(framesetter);
 
         CGContextSetTextPosition(context, 0.f, 0.f); // idk if i need this but it works
@@ -3099,8 +3113,14 @@ you will still get a valid token for name "Funcionário".
 @implementation GradeContainer
 @synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer, isBonus, section;
 
+- (void)setName:(NSString *)name_ {
+	name = [name_ retain];
+	NSLog(@"%p: name %@", self, name);
+}
+
 - (id)init {
 	if ((self = [super init])) {
+		LOG_ALLOC(self);
 		debugLevel = 0;
 		isBonus = NO;
 	}
@@ -3165,13 +3185,15 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)dealloc {
+	NSLog(@"GradeContainer dealloc");
+	
 	[name release];
 	[grade release];
 	[value release];
 	[average release];
 	[subGradeContainers release];
 	[subBonusContainers release];
-	[superContainer release];
+	//[superContainer release];
 
 	[super dealloc];
 }
@@ -3211,6 +3233,17 @@ you will still get a valid token for name "Funcionário".
 		[container attemptToFixValues];
 	}
 }
+
+/*- (void)release {
+	[super release];
+        LOG_RELEASE(self);
+}
+
+- (id)retain {
+	id r = [super retain];
+        LOG_RETAIN(self);
+        return r;
+}*/
 @end
 
 // FIXME: Review ranges on both classes.
@@ -3547,6 +3580,8 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)dealloc {
+	NSLog(@"TestView dealloc");
+
 	[container release];
 	[super dealloc];
 }
@@ -3598,6 +3633,7 @@ you will still get a valid token for name "Funcionário".
 			[gradeLabel setBackgroundColor:[UIColor clearColor]];
 			[gradeLabel setTextColor:[UIColor blackColor]];
 			[gradeLabel setAttributedText:gradeAttributedString];
+                        [gradeAttributedString release];
 			[tableHeaderView addSubview:gradeLabel];
 			[gradeLabel release];
 
@@ -3605,6 +3641,7 @@ you will still get a valid token for name "Funcionário".
 			[averageLabel setBackgroundColor:[UIColor clearColor]];
 			[averageLabel setTextColor:[UIColor blackColor]];
 			[averageLabel setAttributedText:averageAttributedString];
+                        [averageAttributedString release];
 			[tableHeaderView addSubview:averageLabel];
 			[averageLabel release];
 		}
@@ -3735,8 +3772,9 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)dealloc {
-	[$container release];
+	NSLog(@"SubjectView dealloc");
 
+	[$container release];
 	[super dealloc];
 }
 @end
@@ -3770,6 +3808,10 @@ you will still get a valid token for name "Funcionário".
 	if ($rootContainer != nil) {
 		[$rootContainer release];
 	}
+	
+	[self $performUIBlock:^{
+		[[$contentView subviews] makeObjectsPerformSelector:@selector(removeFromSuperview)];
+	}];
 
 	//#define READ_FROM_LOCAL_DEBUG_HTML
 	#ifdef READ_FROM_LOCAL_DEBUG_HTML
@@ -3813,7 +3855,7 @@ you will still get a valid token for name "Funcionário".
 	
 	NSMutableArray *subjectContainers = [NSMutableArray array];
 	for (XMLElement *container in subjectElements) {
-		GradeContainer *subjectContainer = [[[GradeContainer alloc] init] autorelease];
+		GradeContainer *subjectContainer = [[GradeContainer alloc] init];
 		[subjectContainer setSuperContainer:$rootContainer];
 		[subjectContainer setDebugLevel:1];
 		[subjectContainer makeValueTen];
@@ -3848,7 +3890,7 @@ you will still get a valid token for name "Funcionário".
 		NSArray *subjectGrades = [[container firstElementMatchingPath:@"./div/table[starts-with(@id, 'ContentPlaceHolder1_dlMaterias_gvNotas')]"] elementsMatchingPath:@"./tr[@class!='headerTable1 p3']"];
 		NSMutableArray *subGradeContainers = [NSMutableArray array];
 		for (XMLElement *subsection in subjectGrades) {
-			GradeContainer *subGradeContainer = [[[GradeContainer alloc] init] autorelease];
+			GradeContainer *subGradeContainer = [[GradeContainer alloc] init];
 			[subGradeContainer setSuperContainer:subjectContainer];
 			[subGradeContainer setDebugLevel:2];
 			[subGradeContainer makeValueTen];
@@ -3874,7 +3916,7 @@ you will still get a valid token for name "Funcionário".
 			if (![[tableTd content] isEqualToString:@""]) {
 				NSArray *subsectionSubGrades = [[tableTd firstElementMatchingPath:@"./div/div/div/table"] elementsMatchingPath:@"./tr[@class!='headerTable1 p3']"];
 				for (XMLElement *subsubsection in subsectionSubGrades) {
-					GradeContainer *subsubsectionGradeContainer = [[[GradeContainer alloc] init] autorelease];
+					GradeContainer *subsubsectionGradeContainer = [[GradeContainer alloc] init];
 					[subsubsectionGradeContainer setSuperContainer:subGradeContainer];
 					[subsubsectionGradeContainer setDebugLevel:3];
 					[subsubsectionGradeContainer setWeight:1];
@@ -3894,18 +3936,20 @@ you will still get a valid token for name "Funcionário".
 					[subsubsectionGradeContainer setAverage:[subsubsectionAverage americanFloat]];
 
 					[subsubGradeContainers addObject:subsubsectionGradeContainer];
+					[subsubsectionGradeContainer release];
 				}
 			}
 			
 			[subGradeContainer setSubGradeContainers:subsubGradeContainers];
 			[subGradeContainers addObject:subGradeContainer];
+			[subGradeContainer release];
 		}
 
 		NSMutableArray *subBonusContainers = [NSMutableArray array];
 		NSArray *bonusGrades = [[container firstElementMatchingPath:@"./div/table[starts-with(@id, 'ContentPlaceHolder1_dlMaterias_gvAtividades')]"] elementsMatchingPath:@"./tr"];
 		if (bonusGrades != nil) {
 			for (XMLElement *subsection in bonusGrades) {
-				GradeContainer *bonusContainer = [[[GradeContainer alloc] init] autorelease];
+				GradeContainer *bonusContainer = [[GradeContainer alloc] init];
 				[bonusContainer setSuperContainer:subjectContainer];
 				[bonusContainer setDebugLevel:2];
 				[bonusContainer setAverage:@"$NoGrade"];
@@ -3929,12 +3973,14 @@ you will still get a valid token for name "Funcionário".
 				NSLog(@"bc %@", [bonusContainer value]);
 
 				[subBonusContainers addObject:bonusContainer];
+				[bonusContainer release];
 			}
 		}
 		
 		[subjectContainer setSubGradeContainers:subGradeContainers];
 		[subjectContainer setSubBonusContainers:subBonusContainers];
 		[subjectContainers addObject:subjectContainer];
+		[subjectContainer release];
 	}
 
 	[document release];
@@ -3977,10 +4023,14 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)dealloc {
+	NSLog(@"GradesListViewController dealloc");
+
 	[$viewState release];
 	[$eventValidation release];
 	[$year release];
 	[$period release];
+
+	[$rootContainer release];
 
 	[super dealloc];
 }
@@ -4045,6 +4095,7 @@ you will still get a valid token for name "Funcionário".
 
 	if ($viewState == nil || $eventValidation == nil) {
 		[self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: notasparciais.aspx:ViewState/EventValidation" kReportIssue];
+                [document release];
 		return;
 	}
 	
@@ -4064,6 +4115,7 @@ you will still get a valid token for name "Funcionário".
 	
 	if ([$yearOptions count] == 0) {
 		[self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: notasparciais.aspx:Select" kReportIssue];
+                [document release];
 		return;
 	}
 
@@ -4146,6 +4198,8 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)dealloc {
+	NSLog(@"GradesViewController dealloc");
+
 	[$yearOptions release];
 	[$periodOptions release];
 	[$viewState release];
@@ -4208,6 +4262,7 @@ you will still get a valid token for name "Funcionário".
 		int blen = base64_decode([value UTF8String], [value length], &str);
 		if (blen < 0) {
                         [self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: base64_decode()" kReportIssue];
+                        [document release];
 			return;
 		}
 		
@@ -4215,6 +4270,7 @@ you will still get a valid token for name "Funcionário".
 		if ($viewState->stateType == kViewStateTypeError) {
 			NSLog(@"err vs");
                         [self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: parse_viewstate()" kReportIssue];
+                        [document release];
 			return;
 		}
 		
@@ -4420,25 +4476,25 @@ static void DebugInit() {
 	DebugInit();
 	
 	$window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-	
+
 	NewsViewController *newsViewController = [[[NewsViewController alloc] initWithIdentifier:@"news"] autorelease];
 	UINavigationController *newsNavController = [[[UINavigationController alloc] initWithRootViewController:newsViewController] autorelease];
-	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:nil tag:0] autorelease]];
+	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:_UIImageWithName(@"UITabBarFavoritesTemplate.png") tag:0] autorelease]];
 	
 	GradesViewController *gradesViewController = [[[GradesViewController alloc] initWithIdentifier:@"grades"] autorelease];
 	UINavigationController *gradesNavController = [[[UINavigationController alloc] initWithRootViewController:gradesViewController] autorelease];
-	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:nil tag:0] autorelease]];
+	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:_UIImageWithName(@"UITabBarMostViewedTemplate.png") tag:0] autorelease]];
 	
 	PapersViewController *papersViewController = [[[PapersViewController alloc] initWithIdentifier:@"papers"] autorelease];
 	UINavigationController *papersNavController = [[[UINavigationController alloc] initWithRootViewController:papersViewController] autorelease];
-	[papersNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Circulares" image:nil tag:0] autorelease]];
+	[papersNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Circulares" image:_UIImageWithName(@"UITabBarBookmarksTemplate.png") tag:0] autorelease]];
 
 	ServicesViewController *servicesViewController = [[[ServicesViewController alloc] init] autorelease];
-	[servicesViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Serviços" image:nil tag:0] autorelease]];
+	[servicesViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Serviços" image:_UIImageWithName(@"UITabBarMoreTemplate.png") tag:0] autorelease]];
 
 	AccountViewController *accountViewController = [[[AccountViewController alloc] init] autorelease];
 	UINavigationController *accountNavViewController = [[[UINavigationController alloc] initWithRootViewController:accountViewController] autorelease];
-	[accountNavViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Conta" image:nil tag:0] autorelease]];
+	[accountNavViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Conta" image:_UIImageWithName(@"UITabBarContactsTemplate.png") tag:0] autorelease]];
 
 	NSArray *controllers = [NSArray arrayWithObjects:
 		newsNavController,
@@ -4509,6 +4565,10 @@ int main(int argc, char **argv) {
 	InitCache();
 
 	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+	
+	// Well, let's hope this goes unnoticed.
+	*(void **)(&_UIImageWithName) = dlsym(RTLD_DEFAULT, "_UIImageWithName");
+
 	int ret = UIApplicationMain(argc, argv, nil, @"AppDelegate");
     
 	[pool drain];

@@ -26,7 +26,7 @@ int base64_decode(const char *string, size_t len, char **output) {
 	base64_decodestate s;
 	size_t retlen;
 	
-	if ((*output = (char *)calloc((size_t)((double)len / (double)(4/3)) + 1, sizeof(unsigned char))) == NULL)
+	if ((*output = (char *)calloc((size_t)((double)len / (double)(4/3)) + 1, sizeof(char))) == NULL)
 		return -1;
 	printf("*output = %p\n", *output);
 	

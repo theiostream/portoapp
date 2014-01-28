@@ -1660,7 +1660,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)dealloc {
 	[$emptyPiece release];
 	[$pieces release];
+	
+	[$pickerSheet removeFromSuperview]; // Remove the picker sheet from the key window.
 	[$pickerSheet release];
+	
 	[$addGradeButton release];
 
 	free($rowMap);
@@ -2793,6 +2796,9 @@ you will still get a valid token for name "Funcionário".
 		
 		// FIXME: Sometimes stuff will get screwed-up when there's like an image gallery.
 		// Example: https://www.portoseguro.org.br/noticia/detalhe/prazer-pela-cincia
+
+		// URGENT FIXME: Make the font large enough so we can disable zooming.
+		// URGENT FIXME: If we can't find the conteudo element on the Porto page, show it as a plain-ol' webpage.
 		dispatch_sync(dispatch_get_main_queue(), ^{
 			// Firstly, we add Porto's data into our base html.
 			[self executeJavascript:[NSString stringWithFormat:@"var el = document.getElementById('portoAppInsertContent'); el.innerHTML='%@';", [[[[newsContent componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" "] stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"] stringByReplacingOccurrencesOfString:@"\t" withString:@"\t\t"]]];
@@ -2818,6 +2824,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
+	// URGENT FIXME: Both here and on the other controller, set proper titles (article title when it's possible at least.)
 	if (navigationType == UIWebViewNavigationTypeLinkClicked) {
 		NSURL *url = [request URL];
 		if (![[url host] isEqualToString:@"www.portoseguro.org.br"] || [[url absoluteString] rangeOfString:@"noticia"].location == NSNotFound) {
@@ -2848,6 +2855,7 @@ you will still get a valid token for name "Funcionário".
 @implementation NewsTableViewCell
 @synthesize newsImage = $newsImage, newsTitle = $newsTitle, newsSubtitle = $newsSubtitle;
 
+// URGENT FIXME: The gray thing over the view when it's tapped should actually show up.
 - (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
         CGContextRef context = UIGraphicsGetCurrentContext();
         CGContextSetTextMatrix(context, CGAffineTransformIdentity);
@@ -2857,6 +2865,7 @@ you will still get a valid token for name "Funcionário".
         [[UIColor whiteColor] setFill];
         CGContextFillRect(context, rect);
         
+	// URGENT FIXME: Seems like not even this is enough to make the lag on the iPhone go away. I think we'll need some clever-er caching system here.
 	CGContextDrawImage(context, CGRectMake(0.f, [self bounds].size.height-130.f, [self bounds].size.width, 130.f), [$newsImage CGImage]);
 
         CGColorRef textColor = [[UIColor blackColor] CGColor];

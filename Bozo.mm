@@ -2842,7 +2842,7 @@ you will still get a valid token for name "Funcionário".
 			
 			// FIXME: Come on Daniel, there's a *lot* of room for optimization here.
 			// Thirdly, we optimize the page for a better reading experience.
-			[self executeJavascript:@"var p = document.getElementsByTagName('p'); for(i=0; i<p.length; i++) { p[i].style.fontSize='28px'; p[i].style.fontFamily='Helvetica Neue'; p[i].style.lineHeight='1.4'; }"];
+			[self executeJavascript:@"var p = document.getElementsByTagName('p'); for(i=0; i<p.length; i++) { p[i].style.fontSize='32px'; p[i].style.fontFamily='Helvetica Neue'; p[i].style.lineHeight='1.4'; }"];
 			/* " do not remove this comment else vim will get mad. */
 			[self executeJavascript:@"var el = document.getElementsByTagName('h2')[0]; el.style.fontSize='48px';"];
 			[self executeJavascript:@"var el = document.getElementsByTagName('h4')[0]; el.style.fontSize='54px';"];

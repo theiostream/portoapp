@@ -10,6 +10,8 @@
 		ED041D021832BF4E007D2CEC /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED041D011832BF4E007D2CEC /* QuartzCore.framework */; };
 		ED3620EE17E27CE9003277EB /* bg_nav.png in Resources */ = {isa = PBXBuildFile; fileRef = ED3620ED17E27CE9003277EB /* bg_nav.png */; };
 		ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */ = {isa = PBXBuildFile; fileRef = ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */; };
+		ED6751611899AFC600E6FAEF /* about.html in Resources */ = {isa = PBXBuildFile; fileRef = ED6751601899AFC600E6FAEF /* about.html */; };
+		ED6751631899AFD200E6FAEF /* theiostream.html in Resources */ = {isa = PBXBuildFile; fileRef = ED6751621899AFD200E6FAEF /* theiostream.html */; };
 		ED80CC2918958C0B0078D82B /* news_base.html in Resources */ = {isa = PBXBuildFile; fileRef = ED80CC2818958C0B0078D82B /* news_base.html */; };
 		ED8DD83417EA2B0800864BFA /* CoreText.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED8DD83317EA2B0800864BFA /* CoreText.framework */; };
 		EDA366B0184542D6005FC764 /* UISliderHandle.png in Resources */ = {isa = PBXBuildFile; fileRef = EDA366AC184542D6005FC764 /* UISliderHandle.png */; };
@@ -34,6 +36,8 @@
 		ED041D011832BF4E007D2CEC /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		ED3620ED17E27CE9003277EB /* bg_nav.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = bg_nav.png; path = ../../../../Desktop/bg_nav.png; sourceTree = "<group>"; };
 		ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = acontece_no_porto.gif; sourceTree = "<group>"; };
+		ED6751601899AFC600E6FAEF /* about.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = about.html; sourceTree = "<group>"; };
+		ED6751621899AFD200E6FAEF /* theiostream.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = theiostream.html; sourceTree = "<group>"; };
 		ED80CC2818958C0B0078D82B /* news_base.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = news_base.html; sourceTree = "<group>"; };
 		ED8DD83317EA2B0800864BFA /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
 		EDA366AC184542D6005FC764 /* UISliderHandle.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = UISliderHandle.png; sourceTree = "<group>"; };
@@ -144,6 +148,8 @@
 				EDB4081A17E25F7500521640 /* Default-568h@2x.png */,
 				ED3620ED17E27CE9003277EB /* bg_nav.png */,
 				ED80CC2818958C0B0078D82B /* news_base.html */,
+				ED6751601899AFC600E6FAEF /* about.html */,
+				ED6751621899AFD200E6FAEF /* theiostream.html */,
 			);
 			name = "Supporting Files";
 			sourceTree = "<group>";
@@ -200,6 +206,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ED6751611899AFC600E6FAEF /* about.html in Resources */,
 				EDB4080F17E25F7500521640 /* InfoPlist.strings in Resources */,
 				EDB4081717E25F7500521640 /* Default.png in Resources */,
 				EDB4081917E25F7500521640 /* Default@2x.png in Resources */,
@@ -211,6 +218,7 @@
 				EDA366B1184542D6005FC764 /* UISliderHandle@2x.png in Resources */,
 				EDA366B2184542D6005FC764 /* UISliderHandleDown.png in Resources */,
 				EDA366B3184542D6005FC764 /* UISliderHandleDown@2x.png in Resources */,
+				ED6751631899AFD200E6FAEF /* theiostream.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -228,7 +236,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "cat <<EOF\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    cp -r ${APP} /Users/BobNelson/Documents/Projects/PortoApp/Releases\n\n    /usr/bin/ldid -S/Users/BobNelson/Documents/Projects/PortoApp/ent.xml ${APP}/PortoApp\n\n    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.148:/Applications/\n    sleep 5\n    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.148 \"killall -9 backboardd\"\nfi\nEOF";
+			shellScript = "if [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    cp -r ${APP} /Users/BobNelson/Documents/Projects/PortoApp/Releases\n\n    /usr/bin/ldid -S/Users/BobNelson/Documents/Projects/PortoApp/ent.xml ${APP}/PortoApp\n\n    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.148:/Applications/\n    sleep 5\n    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.148 \"killall -9 backboardd\"\nfi";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -280,7 +288,7 @@
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 6.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 6.0;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 			};
@@ -303,7 +311,7 @@
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 6.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 6.0;
 				OTHER_CFLAGS = "-DNS_BLOCK_ASSERTIONS=1";
 				SDKROOT = iphoneos;
 				VALIDATE_PRODUCT = YES;

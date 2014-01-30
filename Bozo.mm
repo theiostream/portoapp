@@ -351,7 +351,7 @@ static CGRect PerfectFrameForViewController(UIViewController *self) {
 
 static inline CGRect FrameWithNavAndTab() {
 	CGRect bounds = [[UIScreen mainScreen] bounds];
-	return CGRectMake(bounds.origin.x, bounds.origin.y + HEIGHT_OF_STATUSBAR + HEIGHT_OF_NAVBAR, bounds.size.width, bounds.size.height - HEIGHT_OF_STATUSBAR - HEIGHT_OF_NAVBAR - HEIGHT_OF_TABBAR + 1.f);
+	return CGRectMake(bounds.origin.x, (HEIGHT_OF_STATUSBAR + HEIGHT_OF_NAVBAR)*2, bounds.size.width, bounds.size.height - HEIGHT_OF_STATUSBAR - HEIGHT_OF_NAVBAR - HEIGHT_OF_TABBAR + 1.f);
 }
 
 static CGRect FixViewBounds(CGRect bounds) {
@@ -931,7 +931,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Account {{{ */
 
-@interface AccountViewController : UIViewController <LoginControllerDelegate>
+@interface AccountViewController : UITableViewController <LoginControllerDelegate> {
+	UIView *$infoView;
+	
+	UITableViewCell *$loginOutCell;
+	UITableViewCell *$aboutCell;
+	UITableViewCell *$theiostreamCell;
+}
 - (void)popupLoginController;
 @end
 
@@ -1251,8 +1257,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		
 		// thanks to https://github.com/0xced/iOS-Artwork-Extractor
 		// let's hope we don't get in trouble with apple for redisting these images.
-		UIImage *knobImage = UIImageResize([UIImage imageNamed:@"UISliderHandle.png"], CGSizeMake(15.f, 15.f));
-		UIImage *knobPressedImage = UIImageResize([UIImage imageNamed:@"UISliderHandleDown.png"], CGSizeMake(15.f, 15.f));
+		/*UIImage *knobImage = UIImageResize([UIImage imageNamed:@"UISliderHandle.png"], CGSizeMake(15.f, 15.f));
+		UIImage *knobPressedImage = UIImageResize([UIImage imageNamed:@"UISliderHandleDown.png"], CGSizeMake(15.f, 15.f));*/
+		UIImage *knobImage = UIImageResize(_UIImageWithName(@"UISliderHandle.png"), CGSizeMake(15.f, 15.f));
+		UIImage *knobPressedImage = UIImageResize(_UIImageWithName(@"UISliderHandleDown.png"), CGSizeMake(15.f, 15.f));
 
 		// FIXME: Frame constants!
 		UIColor *color = UIColorFromHexWithAlpha([piece color], 1.f);
@@ -2052,6 +2060,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)loadView {
 	[super loadView];
 	
+	//$webView = [[UIWebView alloc] initWithFrame:CGRectMake(0.f, 0.f, [[UIScreen mainScreen] bounds].size.width, SYSTEM_VERSION_GT_EQ(@"7.0") ? [[UIScreen mainScreen] bounds].size.height : [[UIScreen mainScreen] bounds].size.height-HEIGHT_OF_TABBAR-HEIGHT_OF_NAVBAR-HEIGHT_OF_STATUSBAR+1.f)];
 	$webView = [[UIWebView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
 	[$webView setScalesPageToFit:YES];
 	[$webView setDelegate:self];
@@ -2065,6 +2074,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)viewDidLoad {
         [super viewDidLoad];
         
+	// I don't want this to be so, but UIWebView has some sort of bug when loading pdf's that'll make it require it :(
 	if (SYSTEM_VERSION_GT_EQ(@"7.0"))
                 [self setAutomaticallyAdjustsScrollViewInsets:NO];
 	
@@ -2653,18 +2663,27 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	}
 	
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:portalData];
-	XMLElement *boletimHref = [document firstElementMatchingPath:@"/html/body/div[@id='educ_geralexterno']/div[@id='educ_bgcorpo']/div[@id='educ_corpo']/div[@id='educ_conteudo']/div[@class='A']/div[@class='A_meio_bl']/div[@class='A_panel_bl  A_panel_hidden_bl ']/div[@class='botoes']/a[1]"];
+	/*XMLElement *boletimHref = [document firstElementMatchingPath:@"/html/body/div[@id='educ_geralexterno']/div[@id='educ_bgcorpo']/div[@id='educ_corpo']/div[@id='educ_conteudo']/div[@class='A']/div[@class='A_meio_bl']/div[@class='A_panel_bl  A_panel_hidden_bl ']/div[@class='botoes']/a[1]"];
 	NSString *function = [[boletimHref attributes] objectForKey:@"href"];
 	
 	if (function == nil) {
 		[document release];
 		[controller setGradeID:nil];
 		return;
+	}*/
+        
+        NSString *function = [[[document firstElementMatchingPath:@"/html/body"] content] gtm_stringByUnescapingFromHTML];
+	NSRange parRange = [function rangeOfString:@"javascript:fPS_Boletim"];
+	if (parRange.location == NSNotFound) {
+		[document release];
+		[controller setGradeID:nil];
+		return;
 	}
 
-	NSRange parRange = [function rangeOfString:@"fPS_Boletim"];
 	NSString *parameter = [function substringFromIndex:parRange.location + parRange.length];
-	NSString *truyyut = [parameter substringWithRange:NSMakeRange(2, [parameter length]-5)];
+	NSRange closePar = [parameter rangeOfString:@")"];
+	NSString *truyyut = [parameter substringWithRange:NSMakeRange(2, closePar.location-3)];
+	NSLog(@"TRUYYUT: %@", truyyut);
 	[document release];
 	
 	url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.educacional.com.br/barra_logados/servicos/portoseguro_notasparciais.asp?x=%@", truyyut]];
@@ -2683,6 +2702,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	}
 
 	NSString *token = [[medElement attributes] objectForKey:@"value"];
+	NSLog(@"token is %@", token);
 	[document release];
 
 	[controller setGradeID:token];
@@ -3077,20 +3097,28 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	static NSString *cellIdentifier = @"PortoNewsHeaderViewIdentifier";
+	UITableViewHeaderFooterView *headerView = [tableView dequeueReusableHeaderFooterViewWithIdentifier:cellIdentifier];
+	if (headerView == nil) {
+		headerView = [[[UITableViewHeaderFooterView alloc] initWithReuseIdentifier:cellIdentifier] autorelease];
+		[[headerView contentView] setBackgroundColor:UIColorFromHexWithAlpha(0x203259, 1.f)];
+
+		UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 3.f, [tableView bounds].size.width - 12.f, 24.f)];
+		[label setBackgroundColor:[UIColor clearColor]];
+		[label setTextColor:[UIColor whiteColor]];
+		[label setFont:[UIFont systemFontOfSize:19.f]];
+		[label setTag:87];
+		[[headerView contentView] addSubview:label];
+		
+		[label release];
+	}
+	
 	NSString *text = [[$imageData objectAtIndex:section] objectForKey:@"Porto"];
 	if ([text isEqualToString:@""]) text = @"Institucional";
-
-	UIView *view = [[[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 30.f)] autorelease];
-	[view setBackgroundColor:UIColorFromHexWithAlpha(/*0x34333D*/0x203259, 1.f)];
 	
-	UILabel *label = [[[UILabel alloc] initWithFrame:CGRectMake(5.f, 3.f, [tableView bounds].size.width - 12.f, 24.f)] autorelease];
-	[label setBackgroundColor:[UIColor clearColor]];
-	[label setTextColor:[UIColor whiteColor]];
-	[label setFont:[UIFont systemFontOfSize:19.f]];
-	[label setText:text];
-	[view addSubview:label];
+	[(UILabel *)[headerView viewWithTag:87] setText:text];
 
-	return view;
+	return headerView;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -3118,15 +3146,13 @@ you will still get a valid token for name "Funcionário".
 /* }}} */
 
 /* Grades Controller {{{ */
+
 // To be honest, I don't like this.
 // We should use recursion. Recursive display of the tree, recursive building of the tree, etc.
 // I doubt Porto will ever require/do such thing (due to their css class naming, I doubt their system support recursion),
 // but I guess we should be better than them and implement this.
 // Maybe a finish-up update before release?
 
-// Yay averages.
-// This is a node.
-// GradeContainer sounds better than GradeNode.
 // TODO: Make it impossible for Bonus Containers to call inappropriate methods 'by mistake'. Same for $NoGraders.
 @implementation GradeContainer
 @synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer, isBonus, section;
@@ -4103,6 +4129,7 @@ you will still get a valid token for name "Funcionário".
 - (void)viewDidLoad {
 	[super viewDidLoad];
 	[self setTitle:@"Notas"];
+	[[self view] setBackgroundColor:[UIColor whiteColor]];
 }
 
 - (void)reloadData {
@@ -4117,8 +4144,11 @@ you will still get a valid token for name "Funcionário".
 		return;
 	}
 	if (![sessionController gradeID]) {
-		[self displayFailViewWithTitle:@"Sem ID de Notas" text:@kReportIssue];
-		return;
+		[self generateGradeID]; // it doesn't cost to try...
+		if (![sessionController gradeID]) {
+			[self displayFailViewWithTitle:@"Sem ID de Notas" text:@kReportIssue];
+			return;
+		}
 	}
 	
 	if ($viewState != nil) [$viewState release];
@@ -4364,7 +4394,7 @@ you will still get a valid token for name "Funcionário".
 		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppCirculares"] autorelease];
 		
 		UITapGestureRecognizer *tapGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tappedScrollView:)];
-		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(15.f, [cell bounds].origin.y, [cell bounds].size.width - 20.f, [cell bounds].size.height)];
+		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(SYSTEM_VERSION_GT_EQ(@"7.0") ? 15.f : 8.f, [cell bounds].origin.y, [cell bounds].size.width - 20.f, [cell bounds].size.height)];
 		[scrollView setBackgroundColor:[UIColor whiteColor]];
 		[scrollView addGestureRecognizer:tapGestureRecognizer];
 		[tapGestureRecognizer release];
@@ -4373,7 +4403,7 @@ you will still get a valid token for name "Funcionário".
 		UILabel *label = [[UILabel alloc] initWithFrame:[cell bounds]];
 		[label setTextColor:[UIColor blackColor]];
 		[label setBackgroundColor:[UIColor clearColor]];
-		[label setFont:[[cell textLabel] font]];
+		[label setFont:SYSTEM_VERSION_GT_EQ(@"7.0") ? [[cell textLabel] font] : [UIFont boldSystemFontOfSize:20.f]];
 		[label setTag:88];
 		[scrollView addSubview:label];
 		[label release];
@@ -4399,7 +4429,7 @@ you will still get a valid token for name "Funcionário".
 	UILabel *label = (UILabel *)[scrollView viewWithTag:88];
 	CGFloat width = [endText sizeWithFont:[label font]].width;
 	
-	[scrollView setFrame:(CGRect){[scrollView frame].origin, {isFolder ? ([cell bounds].size.width-20.f)-15.f : [scrollView frame].size.width, [scrollView frame].size.height}}];
+	[scrollView setFrame:(CGRect){[scrollView frame].origin, {isFolder ? ([cell bounds].size.width-20.f)-18.f : [scrollView frame].size.width, [scrollView frame].size.height}}];
 	[scrollView setContentSize:CGSizeMake(width < [scrollView bounds].size.width ? [scrollView bounds].size.width : width, [scrollView contentSize].height)];
 	
 	[label setFrame:(CGRect){[label frame].origin, {[scrollView contentSize].width, [label frame].size.height}}];
@@ -4489,27 +4519,178 @@ you will still get a valid token for name "Funcionário".
 
 /* Account Controller {{{ */
 
+// TODO: Rethink whether we should use the login data as the table header view or as a "Login" section's header view.
 @implementation AccountViewController
 - (void)loadView {
-	[super loadView];
-	[[self view] setBackgroundColor:[UIColor blueColor]];
+	UITableView *tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleGrouped];
+	[tableView setDelegate:self];
+	[tableView setDataSource:self];
+	[self setTableView:tableView];
+	[tableView release];
+
+	$infoView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [[UIScreen mainScreen] bounds].size.width, 85.f)];
+	
+	/*UIFont *boldFont = [UIFont boldSystemFontOfSize:15.f];
+	UIFont *normalFont = [UIFont systemFontOfSize:13.f];*/
+
+	UILabel *usernameLabel = [[UILabel alloc] initWithFrame:CGRectMake(20.f, 10.f, [$infoView bounds].size.width-40.f, 25.f)];
+	[usernameLabel setFont:[UIFont boldSystemFontOfSize:pxtopt([usernameLabel bounds].size.height)]];
+	[usernameLabel setTextColor:[UIColor blackColor]];
+	[usernameLabel setBackgroundColor:[UIColor clearColor]];
+	[usernameLabel setTag:87];
+	[$infoView addSubview:usernameLabel];
+	[usernameLabel release];
+
+	UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(20.f, [usernameLabel frame].origin.y + [usernameLabel bounds].size.height + 2.f, [$infoView bounds].size.width-40.f, 20.f)];
+	[nameLabel setFont:[UIFont systemFontOfSize:pxtopt([nameLabel bounds].size.height)]];
+	[nameLabel setTextColor:[UIColor grayColor]];
+	[nameLabel setBackgroundColor:[UIColor clearColor]];
+	[nameLabel setTag:88];
+	[$infoView addSubview:nameLabel];
+	[nameLabel release];
+
+	UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake(20.f, [nameLabel frame].origin.y + [nameLabel bounds].size.height - 2.f, [$infoView bounds].size.width-40.f, 20.f)];
+	[gradeLabel setFont:[UIFont systemFontOfSize:pxtopt([gradeLabel bounds].size.height)]];
+	[gradeLabel setTextColor:[UIColor grayColor]];
+	[gradeLabel setBackgroundColor:[UIColor clearColor]];
+	[gradeLabel setTag:89];
+	[$infoView addSubview:gradeLabel];
+	[gradeLabel release];
+
+	$loginOutCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+	[[$loginOutCell textLabel] setTextAlignment:NSTextAlignmentCenter];
+
+	$aboutCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+	[$aboutCell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator];
+	[[$aboutCell textLabel] setText:@"Sobre o app"];
+
+	$theiostreamCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+	[$theiostreamCell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator];
+	[[$theiostreamCell textLabel] setText:@"Sobre o desenvolvedor"];
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+
+	[self setTitle:@"Conta"];
+	[self reloadData];
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return 2;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	return section==1 ? 2 : 1;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	return section==1 ? @"Sobre" : nil;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	return [indexPath section]==0 ? $loginOutCell : [indexPath row]==0 ? $aboutCell : $theiostreamCell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	if ([indexPath section] == 0) {
+		SessionController *sessionController = [SessionController sharedInstance];
+		if ([sessionController hasSession]) {
+			[sessionController setSessionInfo:nil];
+			[sessionController setAccountInfo:nil];
+			
+			[self reloadData];
+		}
+		else {
+			[self popupLoginController];
+		}
+	}
+
+	else {
+		if ([indexPath row] == 0) {
+			WebViewController *aboutController = [[WebViewController alloc] init];
+			[aboutController loadLocalFile:[[NSBundle mainBundle] pathForResource:@"about" ofType:@"html"]];
+
+			[[self navigationController] pushViewController:aboutController animated:YES];
+			[aboutController release];
+		}
+		else {
+			WebViewController *theiostreamController = [[WebViewController alloc] init];
+			[theiostreamController loadLocalFile:[[NSBundle mainBundle] pathForResource:@"theiostream" ofType:@"html"]];
+			
+			[[self navigationController] pushViewController:theiostreamController animated:YES];
+			[theiostreamController release];
+		}
+	}
+
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
 
 - (void)popupLoginController {
 	PortoLoginController *loginController = [[PortoLoginController alloc] init];
 	[loginController setDelegate:self];
+	
 	UINavigationController *navLoginController = [[[UINavigationController alloc] initWithRootViewController:loginController] autorelease];
 	[self presentViewController:navLoginController animated:YES completion:NULL];
 	[loginController release];
 }
 
 - (void)loginControllerDidLogin:(LoginController *)controller {
-	NSLog(@"DID LOGIN.");
+	[self reloadData];
 	[self dismissViewControllerAnimated:YES completion:NULL];
+}
+
+static inline NSString *GetGenderUnicode(NSString *genderCookie) {
+	return [genderCookie isEqualToString:@"M"] ? @" \u2642" : @" \u2640";
+}
+static inline NSString *GetDecentName(NSString *nameCookie) {
+	NSMutableString *spaced = [[[[nameCookie stringByReplacingOccurrencesOfString:@"+" withString:@" "] lowercaseString] mutableCopy] autorelease];
+	[spaced replaceCharactersInRange:NSMakeRange(0, 1) withString:[[spaced substringWithRange:NSMakeRange(0, 1)] capitalizedString]];
+
+	NSRange range = NSMakeRange(0, [spaced length]);
+	while (range.location != NSNotFound) {
+		range = [spaced rangeOfString:@" " options:0 range:range];
+		if (range.location != NSNotFound) {
+			[spaced replaceCharactersInRange:NSMakeRange(range.location+1, 1) withString:[[spaced substringWithRange:NSMakeRange(range.location+1, 1)] capitalizedString]];
+			range = NSMakeRange(range.location + range.length, [spaced length] - (range.location + range.length));
+		}
+	}
+
+	return spaced;
+}
+
+- (void)reloadData {
+	SessionController *sessionController = [SessionController sharedInstance];
+        
+        [[$loginOutCell textLabel] setText:[sessionController hasSession] ? @"Logout" : @"Login"];
+	
+	if ([sessionController hasSession]) {
+		[$infoView setFrame:CGRectMake(0.f, 0.f, [[UIScreen mainScreen] bounds].size.width, 85.f)];
+		
+		for (UIView *v in [$infoView subviews]) [v setHidden:NO];
+		[(UILabel *)[$infoView viewWithTag:87] setText:[[sessionController accountInfo] objectForKey:kPortoUsernameKey]];
+		[(UILabel *)[$infoView viewWithTag:88] setText:[GetDecentName([[sessionController sessionInfo] objectForKey:kPortoNameKey]) stringByAppendingString:GetGenderUnicode([[sessionController sessionInfo] objectForKey:kPortoGenderKey])]];
+		[(UILabel *)[$infoView viewWithTag:89] setText:[[sessionController sessionInfo] objectForKey:kPortoGradeKey]];
+	}
+	else {
+		for (UIView *v in [$infoView subviews]) [v setHidden:YES];
+		[$infoView setFrame:CGRectMake(0.f, 0.f, [[UIScreen mainScreen] bounds].size.width, 15.f)];
+	}
+	
+	[[self tableView] setTableHeaderView:nil];
+	[[self tableView] setTableHeaderView:$infoView];
 }
 
 - (void)loginControllerDidCancel:(LoginController *)controller {
 	[self dismissViewControllerAnimated:YES completion:NULL];
+}
+
+- (void)dealloc {
+	[$infoView release];
+	[$loginOutCell release];
+	[$aboutCell release];
+	
+	[super dealloc];
 }
 @end
 

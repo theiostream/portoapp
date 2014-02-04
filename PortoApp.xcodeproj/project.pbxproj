@@ -12,6 +12,7 @@
 		ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */ = {isa = PBXBuildFile; fileRef = ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */; };
 		ED6751611899AFC600E6FAEF /* about.html in Resources */ = {isa = PBXBuildFile; fileRef = ED6751601899AFC600E6FAEF /* about.html */; };
 		ED6751631899AFD200E6FAEF /* theiostream.html in Resources */ = {isa = PBXBuildFile; fileRef = ED6751621899AFD200E6FAEF /* theiostream.html */; };
+		ED757317189DC07100CCACC9 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED757316189DC07100CCACC9 /* SystemConfiguration.framework */; };
 		ED80CC2918958C0B0078D82B /* news_base.html in Resources */ = {isa = PBXBuildFile; fileRef = ED80CC2818958C0B0078D82B /* news_base.html */; };
 		ED8DD83417EA2B0800864BFA /* CoreText.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED8DD83317EA2B0800864BFA /* CoreText.framework */; };
 		EDB4080517E25F7500521640 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080417E25F7500521640 /* UIKit.framework */; };
@@ -34,6 +35,7 @@
 		ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = acontece_no_porto.gif; sourceTree = "<group>"; };
 		ED6751601899AFC600E6FAEF /* about.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = about.html; sourceTree = "<group>"; };
 		ED6751621899AFD200E6FAEF /* theiostream.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = theiostream.html; sourceTree = "<group>"; };
+		ED757316189DC07100CCACC9 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 		ED80CC2818958C0B0078D82B /* news_base.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = news_base.html; sourceTree = "<group>"; };
 		ED8DD83317EA2B0800864BFA /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
 		EDB4080117E25F7500521640 /* PortoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PortoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -59,6 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ED757317189DC07100CCACC9 /* SystemConfiguration.framework in Frameworks */,
 				EDEFF75C1889FE3C00FB7B2A /* libb64.a in Frameworks */,
 				ED041D021832BF4E007D2CEC /* QuartzCore.framework in Frameworks */,
 				ED8DD83417EA2B0800864BFA /* CoreText.framework in Frameworks */,
@@ -96,6 +99,7 @@
 		EDB4080317E25F7500521640 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				ED757316189DC07100CCACC9 /* SystemConfiguration.framework */,
 				EDEFF75B1889FE3C00FB7B2A /* libb64.a */,
 				ED8DD83317EA2B0800864BFA /* CoreText.framework */,
 				ED041D011832BF4E007D2CEC /* QuartzCore.framework */,

@@ -49,6 +49,8 @@ Code taken from third parties:
 #import <Security/Security.h>
 #import <CoreText/CoreText.h>
 #import <QuartzCore/QuartzCore.h>
+#import <SystemConfiguration/SystemConfiguration.h>
+
 #include <dlfcn.h>
 
 #include "viewstate/viewstate.h"
@@ -58,6 +60,15 @@ Code taken from third parties:
 
 #import "External.mm"
 static UIImage *(*_UIImageWithName)(NSString *);
+
+typedef enum : NSInteger {
+	NotReachable = 0,
+	ReachableViaWiFi,
+	ReachableViaWWAN
+} NetworkStatus;
+
+//extern "C" NSString *kReachabilityChangedNotification;
+extern CFStringRef kReachabilityChangedNotification;
 
 /* }}} */
 
@@ -431,6 +442,21 @@ static NSString *GetATagHref(NSString *aTag) {
 
 /* }}} */
 
+/* Alert {{{ */
+
+static void AlertError(NSString *title, NSString *text) {
+	UIAlertView *alertView = [[UIAlertView alloc] init];
+	[alertView setTitle:title];
+	[alertView setMessage:text];
+	[alertView addButtonWithTitle:@"OK"];
+	[alertView setDelegate:nil];
+	
+	[alertView show];
+	[alertView release];
+}
+
+/* }}} */
+
 /* }}} */
 
 /* Constants {{{ */
@@ -529,6 +555,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (BOOL)hasSession;
 
 - (void)loadSessionWithHandler:(void(^)(BOOL, NSError *))handler;
+- (void)unloadSession;
+
 - (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error;
 @end
 
@@ -937,6 +965,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	UITableViewCell *$loginOutCell;
 	UITableViewCell *$aboutCell;
 	UITableViewCell *$theiostreamCell;
+
+	SCNetworkReachabilityRef $reachability;
+
+@public
+	BOOL $isLoggingIn;	
 }
 - (void)popupLoginController;
 @end
@@ -1698,6 +1731,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 #define kPortoErrorDomain @"PortoServerError"
 
 #define kPortoLoginURL @"http://www.educacional.com.br/login/login_ver.asp"
+#define kPortoLogoutURL @"http://www.educacional.com.br/login/logout.asp"
 
 #define kPortoLoginUsernameKey @"strLogin"
 #define kPortoLoginPasswordKey @"strSenha"
@@ -1756,12 +1790,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
-	$handler(nil, nil, [NSError errorWithDomain:@"PortoServerError" code:-1 userInfo:nil]);
+	$handler(nil, nil, [NSError errorWithDomain:@"PortoServerError" code:-2 userInfo:nil]);
 	[self endConnection];
 }
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
-	$handler(nil, nil, error);
+	$handler(nil, nil, [NSError errorWithDomain:kPortoErrorDomain code:-1 userInfo:nil]);
 	[self endConnection];
 }
 
@@ -1985,6 +2019,20 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		else handler(NO, error);
 	}];
 	[authenticator release];
+}
+
+- (void)unloadSession {
+	// FIXME: Implement a redirection system so I don't need to manually load all these URLs.
+	// We don't care whether we managed to login or not -- after all, we're only doing this to spare Porto's servers from too many sections.
+	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+		[self loadPageWithURL:[NSURL URLWithString:kPortoLogoutURL] method:@"GET" response:NULL error:NULL];
+		[self loadPageWithURL:[NSURL URLWithString:@"http://pessoal.educacional.com.br/login/login_end.asp"] method:@"GET" response:NULL error:NULL];
+		[self loadPageWithURL:[NSURL URLWithString:@"http://projetos.educacional.com.br/login/login_end.asp"] method:@"GET" response:NULL error:NULL];
+		[self loadPageWithURL:[NSURL URLWithString:@"http://www.educacional.com.br/login/logout.asp?hl=ep"] method:@"GET" response:NULL error:NULL];
+		[self loadPageWithURL:[NSURL URLWithString:@"http://portoseguro.educacional.net/include/esc_loginend.asp"] method:@"GET" response:NULL error:NULL];
+	});
+
+	[self setSessionInfo:nil];
 }
 
 - (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error {
@@ -4520,7 +4568,23 @@ you will still get a valid token for name "Funcionário".
 /* Account Controller {{{ */
 
 // TODO: Rethink whether we should use the login data as the table header view or as a "Login" section's header view.
+static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReachabilityFlags flags, void* info);
 @implementation AccountViewController
+- (id)init {
+	if ((self = [super init])) {
+		$isLoggingIn = NO;
+		
+		$reachability = SCNetworkReachabilityCreateWithName(NULL, [kPortoLoginURL UTF8String]);
+		SCNetworkReachabilityContext context = {0, (__bridge void *)(self), NULL, NULL, NULL};
+		if (!SCNetworkReachabilitySetCallback($reachability, ReachabilityCallback, &context)) {
+			CFRelease($reachability);
+			$reachability = NULL;
+		}
+	}
+
+	return self;
+}
+
 - (void)loadView {
 	UITableView *tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleGrouped];
 	[tableView setDelegate:self];
@@ -4576,6 +4640,78 @@ you will still get a valid token for name "Funcionário".
 	[self reloadData];
 }
 
+static void PrintReachabilityFlags(SCNetworkReachabilityFlags flags, const char* comment)
+{
+    NSLog(@"Reachability Flag Status: %c%c %c%c%c%c%c%c%c %s\n",
+          (flags & kSCNetworkReachabilityFlagsIsWWAN)               ? 'W' : '-',
+          (flags & kSCNetworkReachabilityFlagsReachable)            ? 'R' : '-',
+ 
+          (flags & kSCNetworkReachabilityFlagsTransientConnection)  ? 't' : '-',
+          (flags & kSCNetworkReachabilityFlagsConnectionRequired)   ? 'c' : '-',
+          (flags & kSCNetworkReachabilityFlagsConnectionOnTraffic)  ? 'C' : '-',
+          (flags & kSCNetworkReachabilityFlagsInterventionRequired) ? 'i' : '-',
+          (flags & kSCNetworkReachabilityFlagsConnectionOnDemand)   ? 'D' : '-',
+          (flags & kSCNetworkReachabilityFlagsIsLocalAddress)       ? 'l' : '-',
+          (flags & kSCNetworkReachabilityFlagsIsDirect)             ? 'd' : '-',
+          comment
+          );
+}
+static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReachabilityFlags flags, void* info) {
+	NSLog(@"REACHABILITY CALLBACK: %@", (id)info);
+	AccountViewController *self = (AccountViewController *)info;
+	PrintReachabilityFlags(flags, "wat");
+
+	NetworkStatus status = NotReachable;
+	if ((flags & kSCNetworkReachabilityFlagsReachable) != 0) {
+		if ((flags & kSCNetworkReachabilityFlagsConnectionRequired) == 0) {
+			status = ReachableViaWiFi;
+		}
+		
+		if ((((flags & kSCNetworkReachabilityFlagsConnectionOnDemand) != 0) ||
+		      (flags & kSCNetworkReachabilityFlagsConnectionOnTraffic) != 0)) {
+			if ((flags & kSCNetworkReachabilityFlagsInterventionRequired) == 0) {
+				status = ReachableViaWiFi;
+			}
+		}
+
+		if ((flags & kSCNetworkReachabilityFlagsIsWWAN) == kSCNetworkReachabilityFlagsIsWWAN) {
+			status = ReachableViaWWAN;
+		}
+	}
+	
+	NSLog(@"CONNECTED: %d", status != NotReachable);
+	if (status != NotReachable) {
+		NSLog(@"REACHABLE NOW");
+		if (![[SessionController sharedInstance] hasSession]) {
+			NSLog(@"PERFORM LOGIN");
+			[self performLogin];
+			[self reloadData];
+		}
+	}
+	else if (self->$isLoggingIn) {
+		NSLog(@"IS LOGGING IN AND SUFFERED CALLBACK");
+		AlertError(@"Erro de login", @"Falha na conexão");
+
+		self->$isLoggingIn = NO;
+		[self reloadData];
+	}
+	else if ([[SessionController sharedInstance] hasSession]) {
+		NSLog(@"NOT CONNETED, HAS SESSION, LOGOUT");
+		[[SessionController sharedInstance] setSessionInfo:nil];
+		[self reloadData];
+	}
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+	if ($reachability != NULL)
+		SCNetworkReachabilityScheduleWithRunLoop($reachability, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+	if ($reachability != NULL)
+		SCNetworkReachabilityUnscheduleFromRunLoop($reachability, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+}
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
 	return 2;
 }
@@ -4585,7 +4721,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	return section==1 ? @"Sobre" : nil;
+	return section==1 ? @"Informações" : nil;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -4594,15 +4730,20 @@ you will still get a valid token for name "Funcionário".
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 	if ([indexPath section] == 0) {
+		if ($isLoggingIn) return;
+
 		SessionController *sessionController = [SessionController sharedInstance];
 		if ([sessionController hasSession]) {
-			[sessionController setSessionInfo:nil];
+			[sessionController unloadSession];
 			[sessionController setAccountInfo:nil];
 			
 			[self reloadData];
 		}
+		else if ([sessionController hasAccount]) {
+			[self performLogin];
+		}
 		else {
-			[self popupLoginController];
+                        [self popupLoginController];
 		}
 	}
 
@@ -4624,6 +4765,32 @@ you will still get a valid token for name "Funcionário".
 	}
 
 	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+- (void)performLogin {
+	SessionController *sessionController = [SessionController sharedInstance];
+	[sessionController loadSessionWithHandler:^(BOOL success, NSError *error){
+		if (!success) {
+			if ([[error domain] isEqualToString:kPortoErrorDomain]) {
+				if ([error code] == -1) {
+                                        AlertError(@"Erro de Login", @"Não se pôde conectar ao servidor.");
+                                }
+                                else if ([error code] == 1) {
+                                        AlertError(@"Erro de Login", @"O login ou senha encontram-se incorretos.");
+                                        [sessionController setAccountInfo:nil];
+                                }
+                                else {
+                                        AlertError(@"Erro de Login", @"Erro inesperado.");
+                                }
+                        }
+                }
+	
+                $isLoggingIn = NO;
+                [self reloadData];
+        }];
+
+	$isLoggingIn = YES;
+	[self reloadData];
 }
 
 - (void)popupLoginController {
@@ -4658,11 +4825,24 @@ static inline NSString *GetDecentName(NSString *nameCookie) {
 
 	return spaced;
 }
+static inline NSString *GetDecentGrade(NSString *gradeCookie) {
+	// For Educação Infantil, I have no idea what's the format.
+
+	if ([gradeCookie intValue] < 10)
+		return [NSString stringWithFormat:@"%d\u00BA Ano do Ensino Fundamental", [gradeCookie intValue]+1];
+	else if ([gradeCookie intValue] > 10)
+		return [NSString stringWithFormat:@"%d\u00AA Série do Ensino Médio", [gradeCookie intValue]-10];
+	
+	return [NSString stringWithFormat:@"Série: %@", gradeCookie];
+}
 
 - (void)reloadData {
 	SessionController *sessionController = [SessionController sharedInstance];
         
-        [[$loginOutCell textLabel] setText:[sessionController hasSession] ? @"Logout" : @"Login"];
+        if (!$isLoggingIn)
+		[[$loginOutCell textLabel] setText:[sessionController hasSession] ? @"Logout" : @"Login"];
+	else
+		[[$loginOutCell textLabel] setText:@"Realizando login..."];
 	
 	if ([sessionController hasSession]) {
 		[$infoView setFrame:CGRectMake(0.f, 0.f, [[UIScreen mainScreen] bounds].size.width, 85.f)];
@@ -4670,7 +4850,16 @@ static inline NSString *GetDecentName(NSString *nameCookie) {
 		for (UIView *v in [$infoView subviews]) [v setHidden:NO];
 		[(UILabel *)[$infoView viewWithTag:87] setText:[[sessionController accountInfo] objectForKey:kPortoUsernameKey]];
 		[(UILabel *)[$infoView viewWithTag:88] setText:[GetDecentName([[sessionController sessionInfo] objectForKey:kPortoNameKey]) stringByAppendingString:GetGenderUnicode([[sessionController sessionInfo] objectForKey:kPortoGenderKey])]];
-		[(UILabel *)[$infoView viewWithTag:89] setText:[[sessionController sessionInfo] objectForKey:kPortoGradeKey]];
+		[(UILabel *)[$infoView viewWithTag:89] setText:GetDecentGrade([[sessionController sessionInfo] objectForKey:kPortoGradeKey])];
+	}
+	else if ([sessionController accountInfo] != nil) {
+		[$infoView setFrame:CGRectMake(0.f, 0.f, [[UIScreen mainScreen] bounds].size.width, 70.f)];
+		
+		[(UILabel *)[$infoView viewWithTag:87] setHidden:NO];
+		[(UILabel *)[$infoView viewWithTag:87] setText:[[sessionController accountInfo] objectForKey:kPortoUsernameKey]];
+		[(UILabel *)[$infoView viewWithTag:88] setHidden:NO];
+		[(UILabel *)[$infoView viewWithTag:88] setText:@"Não Logado"];
+		[(UILabel *)[$infoView viewWithTag:89] setHidden:YES];
 	}
 	else {
 		for (UIView *v in [$infoView subviews]) [v setHidden:YES];
@@ -4689,6 +4878,9 @@ static inline NSString *GetDecentName(NSString *nameCookie) {
 	[$infoView release];
 	[$loginOutCell release];
 	[$aboutCell release];
+
+	if ($reachability != NULL)
+		CFRelease($reachability);
 	
 	[super dealloc];
 }
@@ -4696,6 +4888,7 @@ static inline NSString *GetDecentName(NSString *nameCookie) {
 
 /* }}} */
 
+// Uncomment this function's line to remove authentication information.
 static void DebugInit() {
 	//[[SessionController sharedInstance] setAccountInfo:nil];
 }
@@ -4745,21 +4938,27 @@ static void DebugInit() {
 	[$window setRootViewController:$tabBarController];
 	[$window makeKeyAndVisible];
 	
+	accountViewController->$isLoggingIn = YES;
+	[accountViewController reloadData];
+
 	[[SessionController sharedInstance] loadSessionWithHandler:^(BOOL success, NSError *error){
-		if (success) return;
+		if (success) {
+			accountViewController->$isLoggingIn = NO;
+			[accountViewController reloadData];
+
+			return;
+		}
 
 		if ([[error domain] isEqualToString:kPortoErrorDomain]) {
 			if ([error code] == 10) {
-				NSLog(@"HI");
 				[$tabBarController setSelectedIndex:4];
 				[accountViewController popupLoginController];
-				NSLog(@"BYE");
 			}
 
-			else {
+			else if ([error code] >= 0) {
 				UIAlertView *errorAlert = [[UIAlertView alloc] init];
 				[errorAlert setTitle:@"Erro"];
-				[errorAlert setMessage:[NSString stringWithFormat:@"Erro de conexão (%d).", [error code]]];
+				[errorAlert setMessage:[NSString stringWithFormat:@"Erro de login (%d).", [error code]]];
 				[errorAlert addButtonWithTitle:@"OK"];
 				[errorAlert setCancelButtonIndex:0];
 				[errorAlert show];
@@ -4775,6 +4974,9 @@ static void DebugInit() {
 			[errorAlert show];
 			[errorAlert release];
 		}
+		
+		accountViewController->$isLoggingIn = NO;
+		[accountViewController reloadData];
 	}];
 
 	NSLog(@"End App Delegate init.");

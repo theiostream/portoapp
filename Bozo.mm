@@ -2864,18 +2864,27 @@ you will still get a valid token for name "Funcionário".
 - (void)webViewDidFinishLoad:(UIWebView *)webView {
 	dispatch_async($queue, ^{
 		NSData *data = [NSData dataWithContentsOfURL:$newsURL];
+		if (data == nil) {
+			dispatch_sync(dispatch_get_main_queue(), ^{
+				[self executeJavascript:@"document.body.innerHTML='<h1>ERRO (newsload:baddata).</h1> <h3>Contate q@theiostream.com e descreva o problema.</h3>';"];
+				[super webViewDidFinishLoad:webView];
+			});
+			
+			return;
+		}
 		
 		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-		NSString *newsContent = [[document firstElementMatchingPath:@"/html/body/div[@id='main']/section//div[starts-with(@class, 'conteudo')]"] content];
-		NSLog(@"FOUND NEWS CONTENT %@", newsContent);
+		XMLElement *newsElement = [document firstElementMatchingPath:@"/html/body/div[@id='main']/section//div[starts-with(@class, 'conteudo')]"];
+		if (newsElement == nil) {
+			// If we have no conteudo, then we load the page without any extra formatting.
+			[self loadHTMLString:[NSString stringWithUTF8String:(const char *)[data bytes]] baseURL:[NSURL URLWithString:kPortoRootURL]];
+		}
 
+		NSString *newsContent = [newsElement content];
 		[document release];
 		
 		// FIXME: Sometimes stuff will get screwed-up when there's like an image gallery.
 		// Example: https://www.portoseguro.org.br/noticia/detalhe/prazer-pela-cincia
-
-		// URGENT FIXME: Make the font large enough so we can disable zooming.
-		// URGENT FIXME: If we can't find the conteudo element on the Porto page, show it as a plain-ol' webpage.
 		dispatch_sync(dispatch_get_main_queue(), ^{
 			// Firstly, we add Porto's data into our base html.
 			[self executeJavascript:[NSString stringWithFormat:@"var el = document.getElementById('portoAppInsertContent'); el.innerHTML='%@';", [[[[newsContent componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" "] stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"] stringByReplacingOccurrencesOfString:@"\t" withString:@"\t\t"]]];
@@ -2885,15 +2894,14 @@ you will still get a valid token for name "Funcionário".
 			   Rendered by libxml2: <div id="share2"><div class="fb-share-button" data-href="" https:="" data-type="box_count"/></div> (doesn't close share2)
 			   Since share2 has a big margin to the right, we need to patch that to get a decent page.
 			*/
-			[self executeJavascript:@"var el = document.getElementById('share'); el.style.margin = '0 auto 0 10px';"];
-			[self executeJavascript:@"var el = document.getElementById('share2'); el.style.margin = '0 auto 0 10px';"];
+			[self executeJavascript:@"var el = document.getElementById('share'); el.style.margin = '0 -10px 0 17px';"];
+			[self executeJavascript:@"var el = document.getElementById('share2'); el.style.margin = '0 -10px 0 17px';"];
 			
-			// FIXME: Come on Daniel, there's a *lot* of room for optimization here.
 			// Thirdly, we optimize the page for a better reading experience.
-			[self executeJavascript:@"var p = document.getElementsByTagName('p'); for(i=0; i<p.length; i++) { p[i].style.fontSize='32px'; p[i].style.fontFamily='Helvetica Neue'; p[i].style.lineHeight='1.4'; }"];
+			[self executeJavascript:@"var p = document.getElementsByTagName('p'); for(i=0; i<p.length; i++) { p[i].style.fontSize='48px'; p[i].style.fontFamily='Helvetica Neue'; p[i].style.lineHeight='1.4'; }"];
 			/* " do not remove this comment else vim will get mad. */
-			[self executeJavascript:@"var el = document.getElementsByTagName('h2')[0]; el.style.fontSize='48px';"];
-			[self executeJavascript:@"var el = document.getElementsByTagName('h4')[0]; el.style.fontSize='54px';"];
+			[self executeJavascript:@"var el = document.getElementsByTagName('h2')[0]; el.style.fontSize='84px';"];
+			[self executeJavascript:@"var el = document.getElementsByTagName('h4')[0]; el.style.marginTop='28px'; el.style.fontSize='96px';"];
 
 			[super webViewDidFinishLoad:webView];			
 		});
@@ -3085,7 +3093,7 @@ you will still get a valid token for name "Funcionário".
 	XMLElement *extraElementA = [extraElement firstElementMatchingPath:@"./h4/a"];
 	NSDictionary *extra = [NSDictionary dictionaryWithObjectsAndKeys:
 		[[[extraElement firstElementMatchingPath:@"./h3"] content] substringFromIndex:3], @"Porto",
-		[[extraElementA attributes] objectForKey:@"href"], @"Link",
+		[kPortoRootURL stringByAppendingString:[[extraElementA attributes] objectForKey:@"href"]], @"Link",
 		[[extraElementA firstElementMatchingPath:@"./strong"] content], @"Subtitle",
 		@"Especial", @"Title",
 		image, @"Image",

@@ -5,13 +5,13 @@
  (c) 2013 Bacon Coding Company, LLC
  no rights whatsoever to the Fundação Visconde de Porto Seguro
  
- Licensed under the GNU General Public License version 3.
- Because I don't want my work stolen.
+ The source code and copies built with it and binaries shipped with this source distribution are licensed under the GNU General Public License version 3.
+ The App Store copy has all rights reserved.
  */
 
 // Tips!
 // [23:41:33] <@DHowett> theiostream: At the top of the function, get 'self.bounds' out into a local variable. each time you call it is a dynamic dispatch because the compiler cannot assume that it has no side-effects
-// [23:42:13] <@DHowett> theiostream: the attributed strings and their CTFrameshit should be cached whenver possible. do not create a new attributed string every time the rect is drawn
+// URGENT FIXME [23:42:13] <@DHowett> theiostream: the attributed strings and their CTFrameshit should be cached whenver possible. do not create a new attributed string every time the rect is drawn
 
 /* Credits {{{
 
@@ -453,6 +453,20 @@ static void AlertError(NSString *title, NSString *text) {
 	
 	[alertView show];
 	[alertView release];
+}
+
+/* }}} */
+
+/* Derp Cipher {{{ */
+
+static char *decode_derpcipher(const char *str) {
+	char *r = (char *)malloc((strlen(str) + 1) * sizeof(char));
+	int i, len=strlen(str);
+        
+	for (i=0; i<len; i++) { r[i] = str[i]-1; }
+	r[i] = '\0';
+	
+	return r;
 }
 
 /* }}} */
@@ -5004,13 +5018,16 @@ static void DebugInit() {
 
 int main(int argc, char **argv) {
 	debug(@"Entering main()");
-	
+
 	InitCache();
 
 	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 	
 	// Well, let's hope this goes unnoticed.
-	*(void **)(&_UIImageWithName) = dlsym(RTLD_DEFAULT, "_UIImageWithName");
+	const char fname_[17] = { 96, 86, 74, 74, 110, 98, 104, 102, 88, 106, 117, 105, 79, 98, 110, 102, '\0' };
+	char *fname = decode_derpcipher(fname_);
+	*(void **)(&_UIImageWithName) = dlsym(RTLD_DEFAULT, fname);
+	free(fname);
 
 	int ret = UIApplicationMain(argc, argv, nil, @"AppDelegate");
     

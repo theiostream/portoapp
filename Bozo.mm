@@ -571,6 +571,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)loadSessionWithHandler:(void(^)(BOOL, NSError *))handler;
 - (void)unloadSession;
 
+- (NSURLRequest *)requestForPageWithURL:(NSURL *)url method:(NSString *)method;
 - (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error;
 @end
 
@@ -728,6 +729,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @interface WebViewController : UIViewController <UIWebViewDelegate> {
 	UIWebView *$webView;
+	FailView *$failView;
 	LoadingIndicatorView *$loadingView;
 }
 - (void)loadPage:(NSString *)page;
@@ -983,7 +985,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface MoodleKeeperViewController : WebDataViewController <Service>
 @end
 
-@interface ServicesViewController : UITableViewController
+@interface ServicesViewController : UITableViewController <UIAlertViewDelegate, UITextFieldDelegate> {
+	NSArray *$controllers;
+	NSMutableArray *$customLinks;
+}
 @end
 
 /* }}} */
@@ -2065,7 +2070,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[self setSessionInfo:nil];
 }
 
-- (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error {
+- (NSURLRequest *)requestForPageWithURL:(NSURL *)url method:(NSString *)method {
 	NSHTTPCookie *aspCookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
 		@"www.educacional.com.br", NSHTTPCookieDomain,
 		@"/", NSHTTPCookiePath,
@@ -2099,11 +2104,14 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[urlRequest setURL:[NSURL URLWithString:[parts objectAtIndex:0]]];
 		[urlRequest setHTTPBody:[[parts objectAtIndex:1] dataUsingEncoding:NSUTF8StringEncoding]];
 	}
-	
-	return [NSURLConnection sendSynchronousRequest:urlRequest returningResponse:response error:error];
+
+	return urlRequest;
 }
 
-// TODO: Is it a better approach to keep this here or in SessionController?
+- (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error {
+	return [NSURLConnection sendSynchronousRequest:[self requestForPageWithURL:url method:method] returningResponse:response error:error];
+}
+
 - (void)generateGradeID {
 	NSURL *url = [NSURL URLWithString:[@"http://www.educacional.com.br/" stringByAppendingString:[[self sessionInfo] objectForKey:kPortoPortalKey]]];
 
@@ -2237,6 +2245,10 @@ you will still get a valid token for name "Funcionário".
 	[$webView setHidden:YES];
 	[[self view] addSubview:$webView];
 
+	$failView = [[FailView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
+	[$failView setHidden:YES];
+	[[self view] addSubview:$failView];
+
 	$loadingView = [[LoadingIndicatorView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
 	[[self view] addSubview:$loadingView];
 }
@@ -2276,8 +2288,20 @@ you will still get a valid token for name "Funcionário".
 - (void)webViewDidFinishLoad:(UIWebView *)webView {
 	[$loadingView setHidden:YES];
 	[[$loadingView activityIndicatorView] stopAnimating];
+	[$failView setHidden:YES];
 
 	[[self webView] setHidden:NO];
+}
+
+- (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
+	[$loadingView setHidden:YES];
+	[[$loadingView activityIndicatorView] stopAnimating];
+	[[self webView] setHidden:YES];
+	
+	[$failView setTitle:@"Erro de request"];
+	[$failView setText:@"Não pôde carregar o link especificado."];
+	[$failView setNeedsLayout];
+	[$failView setHidden:NO];
 }
 
 - (void)dealloc {
@@ -2385,7 +2409,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)reloadData {
-	return;
+	[self displayContentView];
 }
 
 - (Class)contentViewClass {
@@ -4333,6 +4357,7 @@ you will still get a valid token for name "Funcionário".
 	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PortoAppGradeViewControllerCell"];
 	if (cell == nil) {
 		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppGradeViewControllerCell"] autorelease];
+		[cell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator];
 	}
 	
 	Pair *yearValue_ = [$yearOptions objectAtIndex:[indexPath section]];
@@ -4598,27 +4623,110 @@ you will still get a valid token for name "Funcionário".
 /* Custom Services {{{ */
 
 @implementation ClassViewController
+- (NSString *)serviceName {
+	return @"Turma Atual";
+}
 @end
 
 @implementation ZeugnisViewController
+- (NSString *)serviceName {
+	return @"Boletim";
+}
 @end
 
 @implementation PhotoViewController
+- (NSString *)serviceName {
+	return @"Foto do Aluno";
+}
 @end
 
 @implementation MoodleKeeperViewController
+- (NSString *)serviceName {
+	return @"Senha Moodle";
+}
 @end
 
 /* }}} */
 
 @implementation ServicesViewController
+- (id)init {
+	if ((self = [super init])) {
+		$customLinks = [[NSMutableArray alloc] init];
+		
+		NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+		[$customLinks addObjectsFromArray:[defaults arrayForKey:@"ServicesCustomURL"]];
+	}
+
+	return self;
+}
+
+- (void)loadView {
+	[super loadView];
+	
+	ClassViewController *classController = [[ClassViewController alloc] initWithIdentifier:@"classservice"];
+	ZeugnisViewController *zeugnisController = [[ZeugnisViewController alloc] initWithIdentifier:@"zeugnisservice"];
+	PhotoViewController *photoController = [[PhotoViewController alloc] initWithIdentifier:@"photoservice"];
+	MoodleKeeperViewController *moodleController = [[MoodleKeeperViewController alloc] initWithIdentifier:@"moodleservice"];
+
+	$controllers = [[NSArray alloc] initWithObjects:
+		classController,
+		zeugnisController,
+		photoController,
+		moodleController,
+		nil];
+	
+	[classController release];
+	[zeugnisController release];
+	[photoController release];
+	[moodleController release];
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	
+	[self setTitle:@"Serviços"];
+
+	UIBarButtonItem *addButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addLink:)];
+	[[self navigationItem] setRightBarButtonItem:addButton];
+	[addButton release];
+}
+
+- (void)addLink:(id)sender {
+	UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"Adicionar Link" message:@"Insira o título e URL para o link desejado." delegate:self cancelButtonTitle:@"Cancelar" otherButtonTitles:@"OK", nil];
+	[alert setAlertViewStyle:UIAlertViewStyleLoginAndPasswordInput];
+	
+	[[alert textFieldAtIndex:0] setPlaceholder:@"Título do Link"];
+	[[alert textFieldAtIndex:1] setPlaceholder:@"URL do Link"];
+	[[alert textFieldAtIndex:1] setSecureTextEntry:NO];
+	[[alert textFieldAtIndex:1] setDelegate:self];
+
+	[alert show];
+	[alert release];
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+	[textField setText:@"http://"];
+}
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
+	if (buttonIndex != [alertView cancelButtonIndex]) {
+		[$customLinks addObject:[NSDictionary dictionaryWithObjectsAndKeys:
+			[[alertView textFieldAtIndex:0] text], @"LinkTitle",
+			[[alertView textFieldAtIndex:1] text], @"LinkURL",
+			nil]];
+
+		[[NSUserDefaults standardUserDefaults] setObject:$customLinks forKey:@"ServicesCustomURL"];
+		[[NSUserDefaults standardUserDefaults] synchronize];
+		[[self tableView] reloadData];
+	}
+}
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
 	return 2;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return 0;
-        //return section==0 ? [$controllers count] : [$customLinks count];
+        return section==0 ? [$controllers count] : [$customLinks count];
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -4626,11 +4734,55 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PortoAppServicesCellIdentifier"];
+	if (cell == nil) {
+		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppServicesCellIdentifier"] autorelease];
+		[cell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator];
+	}
 	
+	[[cell textLabel] setText:[indexPath section]==0 ? [[$controllers objectAtIndex:[indexPath row]] serviceName] : [[$customLinks objectAtIndex:[indexPath row]] objectForKey:@"LinkTitle"]];
+	
+	return cell;
+}
+
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+	return [indexPath section] == 1;
+}
+
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
+	if (editingStyle == UITableViewCellEditingStyleDelete) {
+		[$customLinks removeObjectAtIndex:[indexPath row]];
+		[[NSUserDefaults standardUserDefaults] setObject:$customLinks forKey:@"ServicesCustomURL"];
+		[[NSUserDefaults standardUserDefaults] synchronize];
+		
+                // TODO: Find a way to make this weirdfuck animation decent.
+		[tableView reloadData];
+	}
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	if ([indexPath section] == 0) {
+		[[self navigationController] pushViewController:[$controllers objectAtIndex:[indexPath row]] animated:YES];
+	}
+	else {
+		NSURLRequest *request = [[SessionController sharedInstance] requestForPageWithURL:[NSURL URLWithString:[[$customLinks objectAtIndex:[indexPath row]] objectForKey:@"LinkURL"]] method:@"GET"];
+		NSLog(@"%@", [NSURL URLWithString:[[$customLinks objectAtIndex:[indexPath row]] objectForKey:@"LinkURL"]]);
+
+		WebViewController *controller = [[WebViewController alloc] init];
+		[controller loadRequest:request];
+		
+		[[self navigationController] pushViewController:controller animated:YES];
+		[controller release];
+	}
 	
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+- (void)dealloc {
+	[$controllers release];
+	[$customLinks release];
+
+	[super dealloc];
 }
 @end
 
@@ -4971,7 +5123,8 @@ static void DebugInit() {
 	[papersNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Circulares" image:_UIImageWithName(@"UITabBarBookmarksTemplate.png") tag:0] autorelease]];
 
 	ServicesViewController *servicesViewController = [[[ServicesViewController alloc] init] autorelease];
-	[servicesViewController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Serviços" image:_UIImageWithName(@"UITabBarMoreTemplate.png") tag:0] autorelease]];
+	UINavigationController *servicesNavController = [[[UINavigationController alloc] initWithRootViewController:servicesViewController] autorelease];
+	[servicesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Serviços" image:_UIImageWithName(@"UITabBarMoreTemplate.png") tag:0] autorelease]];
 
 	AccountViewController *accountViewController = [[[AccountViewController alloc] init] autorelease];
 	UINavigationController *accountNavViewController = [[[UINavigationController alloc] initWithRootViewController:accountViewController] autorelease];
@@ -4981,7 +5134,7 @@ static void DebugInit() {
 		newsNavController,
 		gradesNavController,
 		papersNavController,
-		servicesViewController,
+		servicesNavController,
 		accountNavViewController,
 		nil];
 	$tabBarController = [[UITabBarController alloc] init];

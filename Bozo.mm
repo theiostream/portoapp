@@ -4708,6 +4708,8 @@ you will still get a valid token for name "Funcionário".
 	[textField setText:@"http://"];
 }
 
+// FIXME: Somehow check the validity of created links.
+// An alternative would be to show the erroneous link in the fail view.
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
 	if (buttonIndex != [alertView cancelButtonIndex]) {
 		[$customLinks addObject:[NSDictionary dictionaryWithObjectsAndKeys:

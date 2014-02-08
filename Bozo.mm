@@ -475,7 +475,9 @@ static char *decode_derpcipher(const char *str) {
 
 #define kReportIssue "\n\nPara averiguarmos o problema, mande um email para q@theiostream.com descrevendo o erro."
 #define kServerError "\n\nTente recarregar a página ou espere o site se recuperar de algum problema."
+
 #define kMissingGradesBacktraceStackTop @"notasParciaisWeb.NotasParciais.carregaPagina(String matricula) in D:\\Projetos\\Notas_Parciais\\notasParciaisWeb\\NotasParciais.aspx.cs:148"
+#define kNoGradesLabelText @"Nenhuma nota encontrada para o aluno"
 
 #define kPortoRootURL @"http://www.portoseguro.org.br/"
 #define kPortoRootCircularesPage @"http://www.circulares.portoseguro.org.br/"
@@ -3996,7 +3998,13 @@ you will still get a valid token for name "Funcionário".
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 	XMLElement *divGeral = [document firstElementMatchingPath:@"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']"];
-	
+	if ([[[divGeral firstElementMatchingPath:@"./span[@id='ContentPlaceHolder1_lblMsg']"] content] isEqualToString:kNoGradesLabelText]) {
+		[self displayFailViewWithTitle:@"Notas Não Encontradas" text:@"O período selecionado não pôde ser encontrado."];
+
+		[document release];
+		return;
+	}
+
 	XMLElement *table = [divGeral firstElementMatchingPath:@"./table[@id='ContentPlaceHolder1_dlMaterias']"];
 	NSArray *subjectElements = [table elementsMatchingPath:@"./tr/td/div[@class='container']"];
 	

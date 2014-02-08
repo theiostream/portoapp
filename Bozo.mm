@@ -59,6 +59,7 @@ Code taken from third parties:
 /* External {{{ */
 
 #import "External.mm"
+
 static UIImage *(*_UIImageWithName)(NSString *);
 
 typedef enum : NSInteger {
@@ -66,9 +67,6 @@ typedef enum : NSInteger {
 	ReachableViaWiFi,
 	ReachableViaWWAN
 } NetworkStatus;
-
-//extern "C" NSString *kReachabilityChangedNotification;
-extern CFStringRef kReachabilityChangedNotification;
 
 /* }}} */
 
@@ -966,6 +964,23 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Services {{{ */
 
+@protocol Service <NSObject>
+@required
+- (NSString *)serviceName;
+@end
+
+@interface ZeugnisViewController : WebDataViewController <Service>
+@end
+
+@interface ClassViewController : WebDataViewController <Service>
+@end
+
+@interface PhotoViewController : WebDataViewController <Service>
+@end
+
+@interface MoodleKeeperViewController : WebDataViewController <Service>
+@end
+
 @interface ServicesViewController : UITableViewController
 @end
 
@@ -1160,10 +1175,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* }}} */
 
-// URGENT FIXME: Don't have repeated views. Maybe reuse at least the PickerActionSheet?
-
 /* Pie Chart View {{{ */
 
+// URGENT FIXME: Don't have repeated views. Maybe reuse at least the PickerActionSheet?
 #define kPickerActionSheetSpaceAboveBottom 5.f
 @implementation PickerActionSheet
 - (id)initWithHeight:(CGFloat)height pieChartView:(PieChartView *)pieChartView {
@@ -2087,6 +2101,100 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return [NSURLConnection sendSynchronousRequest:urlRequest returningResponse:response error:error];
 }
 
+// TODO: Is it a better approach to keep this here or in SessionController?
+- (void)generateGradeID {
+	NSURL *url = [NSURL URLWithString:[@"http://www.educacional.com.br/" stringByAppendingString:[[self sessionInfo] objectForKey:kPortoPortalKey]]];
+
+	NSURLResponse *response;
+	NSError *error;
+	NSData *portalData = [self loadPageWithURL:url method:@"GET" response:&response error:&error];
+	if (portalData == nil) {
+		[self setGradeID:nil];
+		return;
+	}
+	
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:portalData];
+	/*XMLElement *boletimHref = [document firstElementMatchingPath:@"/html/body/div[@id='educ_geralexterno']/div[@id='educ_bgcorpo']/div[@id='educ_corpo']/div[@id='educ_conteudo']/div[@class='A']/div[@class='A_meio_bl']/div[@class='A_panel_bl  A_panel_hidden_bl ']/div[@class='botoes']/a[1]"];
+	NSString *function = [[boletimHref attributes] objectForKey:@"href"];
+	
+	if (function == nil) {
+		[document release];
+		[controller setGradeID:nil];
+		return;
+	}*/
+        
+        NSString *function = [[[document firstElementMatchingPath:@"/html/body"] content] gtm_stringByUnescapingFromHTML];
+	NSRange parRange = [function rangeOfString:@"javascript:fPS_Boletim"];
+	if (parRange.location == NSNotFound) {
+		[document release];
+		[self setGradeID:nil];
+		return;
+	}
+
+	NSString *parameter = [function substringFromIndex:parRange.location + parRange.length];
+	NSRange closePar = [parameter rangeOfString:@")"];
+	NSString *truyyut = [parameter substringWithRange:NSMakeRange(2, closePar.location-3)];
+	NSLog(@"TRUYYUT: %@", truyyut);
+	[document release];
+	
+	url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.educacional.com.br/barra_logados/servicos/portoseguro_notasparciais.asp?x=%@", truyyut]];
+	NSData *data = [self loadPageWithURL:url method:@"GET" response:&response error:&error];
+	if (data == nil) {
+		[self setGradeID:nil];
+		return;
+	}
+
+	document = [[XMLDocument alloc] initWithHTMLData:data];
+	XMLElement *medElement = [document firstElementMatchingPath:@"/html/body/form/input"];
+	if (medElement == nil) {
+		[document release];
+		[self setGradeID:nil];
+		return;
+	}
+
+	NSString *token = [[medElement attributes] objectForKey:@"value"];
+	NSLog(@"token is %@", token);
+	[document release];
+
+	[self setGradeID:token];
+}
+
+/* 
+Funnily, they have this fun security issue where if you go to iframe_comunicados.asp without any cookies
+you will still get a valid token for name "Funcionário".
+*/
+- (void)generatePapersID {
+	//NSURL *papersURL = [NSURL URLWithString:@"http://www.educacional.com.br/rd/gravar.asp?servidor=http://portoseguro.educacional.net&url=/educacional/comunicados.asp"];
+	NSURL *papersURL = [NSURL URLWithString:@"http://portoseguro.educacional.net/educacional/iframe_comunicados.asp"];
+
+	NSURLResponse *response;
+	NSError *error;
+	NSData *papersPageData = [self loadPageWithURL:papersURL method:@"GET" response:&response error:&error];
+	if (papersPageData == nil) {
+		[self setPapersID:nil];
+		return;
+	}
+	
+	// Since libxml doesn't like this page, we'll need to do parsing ourselves.
+	// I think this deserves a FIXME.
+	const char *pageData = (const char *)[papersPageData bytes];
+	char *input = strstr(pageData, "<input");
+	char *close = strstr(input, ">");
+	char *value = strstr(input, "value");
+	if (close <= value) {
+		[self setPapersID:nil];
+		return;
+	}
+
+	value += 7; //strlen("value=\"")
+	char *c = value;
+	while (*c != '"') c++;
+	*c = '\0';
+	
+	NSLog(@"value is %s", value);
+	[self setPapersID:[NSString stringWithUTF8String:value]];
+}
+
 - (void)dealloc {
 	[$keychainItem release];
 	[$accountInfo release];
@@ -2101,8 +2209,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 /* }}} */
 
 /* Web View Controller {{{ */
-// URGENT FIXME: Add some sort of WebDataController-like loading screen while the page's loading.
-
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wincomplete-implementation"
 
@@ -2703,109 +2809,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[controller loadSessionWithHandler:^(BOOL success, NSError *error){
 		if (!success) [controller setAccountInfo:previousAccountInfo];
 		else {
-			[self generateGradeID];
-			[self generatePapersID];
+			[controller generateGradeID];
+			[controller generatePapersID];
 		}
 
 		[self endRequestWithSuccess:success error:error];
 	}];
-}
-
-// TODO: Is it a better approach to keep this here or in SessionController?
-- (void)generateGradeID {
-	SessionController *controller = [SessionController sharedInstance];
-	NSURL *url = [NSURL URLWithString:[@"http://www.educacional.com.br/" stringByAppendingString:[[controller sessionInfo] objectForKey:kPortoPortalKey]]];
-
-	NSURLResponse *response;
-	NSError *error;
-	NSData *portalData = [controller loadPageWithURL:url method:@"GET" response:&response error:&error];
-	if (portalData == nil) {
-		[controller setGradeID:nil];
-		return;
-	}
-	
-	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:portalData];
-	/*XMLElement *boletimHref = [document firstElementMatchingPath:@"/html/body/div[@id='educ_geralexterno']/div[@id='educ_bgcorpo']/div[@id='educ_corpo']/div[@id='educ_conteudo']/div[@class='A']/div[@class='A_meio_bl']/div[@class='A_panel_bl  A_panel_hidden_bl ']/div[@class='botoes']/a[1]"];
-	NSString *function = [[boletimHref attributes] objectForKey:@"href"];
-	
-	if (function == nil) {
-		[document release];
-		[controller setGradeID:nil];
-		return;
-	}*/
-        
-        NSString *function = [[[document firstElementMatchingPath:@"/html/body"] content] gtm_stringByUnescapingFromHTML];
-	NSRange parRange = [function rangeOfString:@"javascript:fPS_Boletim"];
-	if (parRange.location == NSNotFound) {
-		[document release];
-		[controller setGradeID:nil];
-		return;
-	}
-
-	NSString *parameter = [function substringFromIndex:parRange.location + parRange.length];
-	NSRange closePar = [parameter rangeOfString:@")"];
-	NSString *truyyut = [parameter substringWithRange:NSMakeRange(2, closePar.location-3)];
-	NSLog(@"TRUYYUT: %@", truyyut);
-	[document release];
-	
-	url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.educacional.com.br/barra_logados/servicos/portoseguro_notasparciais.asp?x=%@", truyyut]];
-	NSData *data = [controller loadPageWithURL:url method:@"GET" response:&response error:&error];
-	if (data == nil) {
-		[controller setGradeID:nil];
-		return;
-	}
-
-	document = [[XMLDocument alloc] initWithHTMLData:data];
-	XMLElement *medElement = [document firstElementMatchingPath:@"/html/body/form/input"];
-	if (medElement == nil) {
-		[document release];
-		[controller setGradeID:nil];
-		return;
-	}
-
-	NSString *token = [[medElement attributes] objectForKey:@"value"];
-	NSLog(@"token is %@", token);
-	[document release];
-
-	[controller setGradeID:token];
-}
-
-/* 
-Funnily, they have this fun security issue where if you go to iframe_comunicados.asp without any cookies
-you will still get a valid token for name "Funcionário".
-*/
-
-- (void)generatePapersID {
-	SessionController *controller = [SessionController sharedInstance];
-	//NSURL *papersURL = [NSURL URLWithString:@"http://www.educacional.com.br/rd/gravar.asp?servidor=http://portoseguro.educacional.net&url=/educacional/comunicados.asp"];
-	NSURL *papersURL = [NSURL URLWithString:@"http://portoseguro.educacional.net/educacional/iframe_comunicados.asp"];
-
-	NSURLResponse *response;
-	NSError *error;
-	NSData *papersPageData = [controller loadPageWithURL:papersURL method:@"GET" response:&response error:&error];
-	if (papersPageData == nil) {
-		[controller setPapersID:nil];
-		return;
-	}
-	
-	// Since libxml doesn't like this page, we'll need to do parsing ourselves.
-	// I think this deserves an URGENT FIXME.
-	const char *pageData = (const char *)[papersPageData bytes];
-	char *input = strstr(pageData, "<input");
-	char *close = strstr(input, ">");
-	char *value = strstr(input, "value");
-	if (close <= value) {
-		[controller setPapersID:nil];
-		return;
-	}
-
-	value += 7; //strlen("value=\"")
-	char *c = value;;
-	while (*c != '"') c++;
-	*c = '\0';
-	
-	NSLog(@"value is %s", value);
-	[controller setPapersID:[NSString stringWithUTF8String:value]];
 }
 @end
 /* }}} */
@@ -4214,7 +4223,7 @@ you will still get a valid token for name "Funcionário".
 		return;
 	}
 	if (![sessionController gradeID]) {
-		[self generateGradeID]; // it doesn't cost to try...
+		[sessionController generateGradeID]; // it doesn't cost to try...
 		if (![sessionController gradeID]) {
 			[self displayFailViewWithTitle:@"Sem ID de Notas" text:@kReportIssue];
 			return;
@@ -4578,10 +4587,42 @@ you will still get a valid token for name "Funcionário".
 
 /* Services Controller {{{ */
 
+/* Custom Services {{{ */
+
+@implementation ClassViewController
+@end
+
+@implementation ZeugnisViewController
+@end
+
+@implementation PhotoViewController
+@end
+
+@implementation MoodleKeeperViewController
+@end
+
+/* }}} */
+
 @implementation ServicesViewController
-- (void)loadView {
-	[super loadView];
-	[[self view] setBackgroundColor:[UIColor blueColor]];
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return 2;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	return 0;
+        //return section==0 ? [$controllers count] : [$customLinks count];
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+	return section==0 ? @"Serviços" : @"Links";
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	
 }
 @end
 
@@ -4662,26 +4703,10 @@ static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
 	[self reloadData];
 }
 
-static void PrintReachabilityFlags(SCNetworkReachabilityFlags flags, const char* comment)
-{
-    NSLog(@"Reachability Flag Status: %c%c %c%c%c%c%c%c%c %s\n",
-          (flags & kSCNetworkReachabilityFlagsIsWWAN)               ? 'W' : '-',
-          (flags & kSCNetworkReachabilityFlagsReachable)            ? 'R' : '-',
- 
-          (flags & kSCNetworkReachabilityFlagsTransientConnection)  ? 't' : '-',
-          (flags & kSCNetworkReachabilityFlagsConnectionRequired)   ? 'c' : '-',
-          (flags & kSCNetworkReachabilityFlagsConnectionOnTraffic)  ? 'C' : '-',
-          (flags & kSCNetworkReachabilityFlagsInterventionRequired) ? 'i' : '-',
-          (flags & kSCNetworkReachabilityFlagsConnectionOnDemand)   ? 'D' : '-',
-          (flags & kSCNetworkReachabilityFlagsIsLocalAddress)       ? 'l' : '-',
-          (flags & kSCNetworkReachabilityFlagsIsDirect)             ? 'd' : '-',
-          comment
-          );
-}
+// TODO: Implement a timer so we don't get troubled by small 3G usage stuff.
 static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReachabilityFlags flags, void* info) {
 	NSLog(@"REACHABILITY CALLBACK: %@", (id)info);
 	AccountViewController *self = (AccountViewController *)info;
-	PrintReachabilityFlags(flags, "wat");
 
 	NetworkStatus status = NotReachable;
 	if ((flags & kSCNetworkReachabilityFlagsReachable) != 0) {

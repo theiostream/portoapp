@@ -3009,9 +3009,6 @@ you will still get a valid token for name "Funcionário".
 
         [[UIColor whiteColor] setFill];
         CGContextFillRect(context, rect);
-        
-	// URGENT FIXME: Seems like not even this is enough to make the lag on the iPhone go away. I think we'll need some clever-er caching system here.
-	//CGContextDrawImage(context, CGRectMake(0.f, [self bounds].size.height-130.f, [self bounds].size.width, 130.f), [$newsImage CGImage]);
 
         CGColorRef textColor = [[UIColor blackColor] CGColor];
 
@@ -3061,7 +3058,7 @@ you will still get a valid token for name "Funcionário".
 
 - (void)setNewsImage:(UIImage *)img {
 	[$imageView setImage:img];
-	$newsImage = [img retain];
+	$newsImage = [img retain]; // FIXME: Do we need this reference?
 }
 
 - (void)dealloc {
@@ -4656,6 +4653,69 @@ you will still get a valid token for name "Funcionário".
 - (NSString *)serviceName {
 	return @"Foto do Aluno";
 }
+
+- (void)loadView {
+	[super loadView];
+	[[self view] setBackgroundColor:[UIColor whiteColor]];
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:[self serviceName]];
+}
+
+- (void)reloadData {
+	[super reloadData];
+	
+	[(UIImageView *)[[self contentView] viewWithTag:55] setImage:nil];
+
+	SessionController *sessionController = [SessionController sharedInstance];
+	if (![sessionController hasSession]) {
+		[self displayFailViewWithTitle:@"Sem autenticação" text:@"Realize o login no menu de Contas."];
+		return;
+	}
+	if (![sessionController gradeID]) {
+		[sessionController generateGradeID]; // it doesn't cost to try...
+		if (![sessionController gradeID]) {
+			[self displayFailViewWithTitle:@"Sem ID de Notas" text:@kReportIssue];
+			return;
+		}
+	}
+	
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?token=%@", [sessionController gradeID]]];
+	NSURLResponse *response;
+	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+	if (data == nil) {
+		[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
+		return;
+	}
+	
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+	XMLElement *imgTag = [document firstElementMatchingPath:@"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']/div[@class='container']/div/img[@id='ContentPlaceHolder1_imgFotoAluno']"];
+	
+	if (imgTag == nil) {
+		[self displayFailViewWithTitle:@"Falha de Interpretação." text:@"Erro: ImgElement" kReportIssue];
+		[document release];
+		return;
+	}
+
+	UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[@"http://notasparciais.portoseguro.org.br/" stringByAppendingString:[[imgTag attributes] objectForKey:@"src"]]]]];
+	[document release];
+	
+	[self $performUIBlock:^{
+		UIImageView *imageView = (UIImageView *)[self contentView];
+		[imageView setImage:image];
+
+		[self displayContentView];
+	}];
+}
+
+- (void)loadContentView {
+	UIImageView *imageView = [[UIImageView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
+	[imageView setTag:55];
+
+	$contentView = imageView;
+}
 @end
 
 @implementation MoodleKeeperViewController
@@ -5137,7 +5197,7 @@ static void DebugInit() {
 	
 	GradesViewController *gradesViewController = [[[GradesViewController alloc] initWithIdentifier:@"grades"] autorelease];
 	UINavigationController *gradesNavController = [[[UINavigationController alloc] initWithRootViewController:gradesViewController] autorelease];
-	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:/*_UIImageWithName(@"UITabBarMostViewedTemplate.png")*/[UIImage imageNamed:@"notas_tab.png"] tag:0] autorelease]];
+	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:_UIImageWithName(@"UITabBarMostViewedTemplate.png")/*[UIImage imageNamed:@"notas_tab.png"]*/ tag:0] autorelease]];
 	
 	PapersViewController *papersViewController = [[[PapersViewController alloc] initWithIdentifier:@"papers"] autorelease];
 	UINavigationController *papersNavController = [[[UINavigationController alloc] initWithRootViewController:papersViewController] autorelease];

@@ -4691,7 +4691,7 @@ you will still get a valid token for name "Funcionário".
 	}
 	
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-	XMLElement *imgTag = [document firstElementMatchingPath:@"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']/div[@class='container']/div/img[@id='ContentPlaceHolder1_imgFotoAluno']"];
+	XMLElement *imgTag = [document firstElementMatchingPath:@"//img[@id='ContentPlaceHolder1_imgFotoAluno']"];
 	
 	if (imgTag == nil) {
 		[self displayFailViewWithTitle:@"Falha de Interpretação." text:@"Erro: ImgElement" kReportIssue];
@@ -4712,7 +4712,6 @@ you will still get a valid token for name "Funcionário".
 
 - (void)loadContentView {
 	UIImageView *imageView = [[UIImageView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
-	[imageView setTag:55];
 
 	$contentView = imageView;
 }
@@ -4877,7 +4876,7 @@ static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
 	if ((self = [super init])) {
 		$isLoggingIn = NO;
 		
-		$reachability = SCNetworkReachabilityCreateWithName(NULL, [kPortoLoginURL UTF8String]);
+		$reachability = SCNetworkReachabilityCreateWithName(NULL, "www.educacional.com.br");
 		SCNetworkReachabilityContext context = {0, (__bridge void *)(self), NULL, NULL, NULL};
 		if (!SCNetworkReachabilitySetCallback($reachability, ReachabilityCallback, &context)) {
 			CFRelease($reachability);
@@ -4966,7 +4965,7 @@ static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
 		}
 	}
 	
-	NSLog(@"CONNECTED: %d", status != NotReachable);
+	NSLog(@"CONNECTED: %d (st=%d)", status != NotReachable, status);
 	if (status != NotReachable) {
 		NSLog(@"REACHABLE NOW");
 		if (![[SessionController sharedInstance] hasSession]) {

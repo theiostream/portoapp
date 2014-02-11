@@ -856,6 +856,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
         UIImage *$newsImage;
         NSString *$newsTitle;
         NSString *$newsSubtitle;
+	
+	UIImageView *$imageView;
 }
 
 @property(nonatomic, retain) UIImage *newsImage;
@@ -2989,6 +2991,15 @@ you will still get a valid token for name "Funcionário".
 @implementation NewsTableViewCell
 @synthesize newsImage = $newsImage, newsTitle = $newsTitle, newsSubtitle = $newsSubtitle;
 
+- (id)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+	if ((self = [super initWithStyle:style reuseIdentifier:reuseIdentifier])) {
+		$imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0.f, 0.f, [self bounds].size.width, 130.f)];
+		[self addSubview:$imageView];
+	}
+
+	return self;
+}
+
 // URGENT FIXME: The gray thing over the view when it's tapped should actually show up.
 - (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
         CGContextRef context = UIGraphicsGetCurrentContext();
@@ -3000,7 +3011,7 @@ you will still get a valid token for name "Funcionário".
         CGContextFillRect(context, rect);
         
 	// URGENT FIXME: Seems like not even this is enough to make the lag on the iPhone go away. I think we'll need some clever-er caching system here.
-	CGContextDrawImage(context, CGRectMake(0.f, [self bounds].size.height-130.f, [self bounds].size.width, 130.f), [$newsImage CGImage]);
+	//CGContextDrawImage(context, CGRectMake(0.f, [self bounds].size.height-130.f, [self bounds].size.width, 130.f), [$newsImage CGImage]);
 
         CGColorRef textColor = [[UIColor blackColor] CGColor];
 
@@ -3048,10 +3059,17 @@ you will still get a valid token for name "Funcionário".
         }        
 }
 
+- (void)setNewsImage:(UIImage *)img {
+	[$imageView setImage:img];
+	$newsImage = [img retain];
+}
+
 - (void)dealloc {
         [$newsImage release];
         [$newsTitle release];
         [$newsSubtitle release];
+
+	[$imageView release];
 
         [super dealloc];
 }
@@ -4724,7 +4742,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 2;
+	return [$customLinks count] > 0 ? 2 : 1;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -5111,14 +5129,15 @@ static void DebugInit() {
 	DebugInit();
 	
 	$window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+	[$window setBackgroundColor:[UIColor whiteColor]];
 
 	NewsViewController *newsViewController = [[[NewsViewController alloc] initWithIdentifier:@"news"] autorelease];
 	UINavigationController *newsNavController = [[[UINavigationController alloc] initWithRootViewController:newsViewController] autorelease];
-	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:_UIImageWithName(@"UITabBarFavoritesTemplate.png") tag:0] autorelease]];
+	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:/*_UIImageWithName(@"UITabBarFavoritesTemplate.png")*/[UIImage imageNamed:@"news_tab.png"] tag:0] autorelease]];
 	
 	GradesViewController *gradesViewController = [[[GradesViewController alloc] initWithIdentifier:@"grades"] autorelease];
 	UINavigationController *gradesNavController = [[[UINavigationController alloc] initWithRootViewController:gradesViewController] autorelease];
-	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:_UIImageWithName(@"UITabBarMostViewedTemplate.png") tag:0] autorelease]];
+	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:/*_UIImageWithName(@"UITabBarMostViewedTemplate.png")*/[UIImage imageNamed:@"notas_tab.png"] tag:0] autorelease]];
 	
 	PapersViewController *papersViewController = [[[PapersViewController alloc] initWithIdentifier:@"papers"] autorelease];
 	UINavigationController *papersNavController = [[[UINavigationController alloc] initWithRootViewController:papersViewController] autorelease];

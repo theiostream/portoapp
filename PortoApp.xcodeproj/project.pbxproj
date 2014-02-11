@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		ED041D021832BF4E007D2CEC /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED041D011832BF4E007D2CEC /* QuartzCore.framework */; };
+		ED0AC2AB18A98F6000277CAB /* news_tab@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0AC2AA18A98F6000277CAB /* news_tab@2x.png */; };
+		ED0AC2AD18A9936600277CAB /* news_tab.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0AC2AC18A9936600277CAB /* news_tab.png */; };
+		ED0AC2AF18A9943200277CAB /* notas_tab@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0AC2AE18A9943200277CAB /* notas_tab@2x.png */; };
 		ED2991541899E7DA00A89AAB /* github-buttons.html in Resources */ = {isa = PBXBuildFile; fileRef = ED2991531899E7DA00A89AAB /* github-buttons.html */; };
 		ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */ = {isa = PBXBuildFile; fileRef = ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */; };
 		ED6751611899AFC600E6FAEF /* about.html in Resources */ = {isa = PBXBuildFile; fileRef = ED6751601899AFC600E6FAEF /* about.html */; };
@@ -31,6 +34,9 @@
 
 /* Begin PBXFileReference section */
 		ED041D011832BF4E007D2CEC /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		ED0AC2AA18A98F6000277CAB /* news_tab@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "news_tab@2x.png"; sourceTree = "<group>"; };
+		ED0AC2AC18A9936600277CAB /* news_tab.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = news_tab.png; sourceTree = "<group>"; };
+		ED0AC2AE18A9943200277CAB /* notas_tab@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "notas_tab@2x.png"; sourceTree = "<group>"; };
 		ED2991531899E7DA00A89AAB /* github-buttons.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = "github-buttons.html"; sourceTree = "<group>"; };
 		ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = acontece_no_porto.gif; sourceTree = "<group>"; };
 		ED6751601899AFC600E6FAEF /* about.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = about.html; sourceTree = "<group>"; };
@@ -76,6 +82,26 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		ED0AC2A918A98F4700277CAB /* Tab Bar */ = {
+			isa = PBXGroup;
+			children = (
+				ED0AC2AC18A9936600277CAB /* news_tab.png */,
+				ED0AC2AA18A98F6000277CAB /* news_tab@2x.png */,
+				ED0AC2AE18A9943200277CAB /* notas_tab@2x.png */,
+			);
+			name = "Tab Bar";
+			sourceTree = "<group>";
+		};
+		ED0AC2B018A9A6BA00277CAB /* About */ = {
+			isa = PBXGroup;
+			children = (
+				ED6751601899AFC600E6FAEF /* about.html */,
+				ED6751621899AFD200E6FAEF /* theiostream.html */,
+				ED2991531899E7DA00A89AAB /* github-buttons.html */,
+			);
+			name = About;
+			sourceTree = "<group>";
+		};
 		EDB407F817E25F7500521640 = {
 			isa = PBXGroup;
 			children = (
@@ -123,17 +149,16 @@
 		EDB4080B17E25F7500521640 /* Supporting Files */ = {
 			isa = PBXGroup;
 			children = (
+				ED0AC2B018A9A6BA00277CAB /* About */,
+				ED0AC2A918A98F4700277CAB /* Tab Bar */,
 				EDB4080C17E25F7500521640 /* PortoApp-Info.plist */,
 				EDB4080D17E25F7500521640 /* InfoPlist.strings */,
 				EDB4081217E25F7500521640 /* PortoApp-Prefix.pch */,
-				ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */,
 				EDB4081617E25F7500521640 /* Default.png */,
 				EDB4081817E25F7500521640 /* Default@2x.png */,
 				EDB4081A17E25F7500521640 /* Default-568h@2x.png */,
 				ED80CC2818958C0B0078D82B /* news_base.html */,
-				ED6751601899AFC600E6FAEF /* about.html */,
-				ED6751621899AFD200E6FAEF /* theiostream.html */,
-				ED2991531899E7DA00A89AAB /* github-buttons.html */,
+				ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */,
 			);
 			name = "Supporting Files";
 			sourceTree = "<group>";
@@ -190,13 +215,16 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ED0AC2AB18A98F6000277CAB /* news_tab@2x.png in Resources */,
 				ED6751611899AFC600E6FAEF /* about.html in Resources */,
 				EDB4080F17E25F7500521640 /* InfoPlist.strings in Resources */,
 				EDB4081717E25F7500521640 /* Default.png in Resources */,
+				ED0AC2AF18A9943200277CAB /* notas_tab@2x.png in Resources */,
 				EDB4081917E25F7500521640 /* Default@2x.png in Resources */,
 				EDB4081B17E25F7500521640 /* Default-568h@2x.png in Resources */,
 				ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */,
 				ED2991541899E7DA00A89AAB /* github-buttons.html in Resources */,
+				ED0AC2AD18A9936600277CAB /* news_tab.png in Resources */,
 				ED80CC2918958C0B0078D82B /* news_base.html in Resources */,
 				ED6751631899AFD200E6FAEF /* theiostream.html in Resources */,
 			);
@@ -216,7 +244,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    cp -r ${APP} /Users/BobNelson/Documents/Projects/PortoApp/Releases\n\n    /usr/bin/ldid -S/Users/BobNelson/Documents/Projects/PortoApp/ent.xml ${APP}/PortoApp\n\n    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.148:/Applications/\n    sleep 5\n    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.148 \"killall -9 backboardd\"\nfi";
+			shellScript = "\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    cp -r ${APP} /Users/BobNelson/Documents/Projects/PortoApp/Releases\n\n    /usr/bin/ldid -S/Users/BobNelson/Documents/Projects/PortoApp/ent.xml ${APP}/PortoApp\n\n    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.148:/Applications/\n    sleep 5\n    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.148 \"killall -9 backboardd\"\nfi";
 		};
 /* End PBXShellScriptBuildPhase section */
 

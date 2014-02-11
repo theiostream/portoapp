@@ -545,10 +545,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	KeychainItemWrapper *$keychainItem;
 	KeychainItemWrapper *$gradeKeyItem;
 	KeychainItemWrapper *$papersKeyItem;
+	KeychainItemWrapper *$truyyutItem;
 
 	NSDictionary *$accountInfo;
 	NSString *$gradeID;
 	NSString *$papersID;
+	NSString *$truyyut;
 	
 	NSDictionary *$sessionInfo;
 }
@@ -563,6 +565,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (NSString *)papersID;
 - (void)setPapersID:(NSString *)papersID;
+
+- (NSString *)truyyut;
+- (void)setTruyyut:(NSString *)truyyut;
 
 - (NSDictionary *)sessionInfo;
 - (void)setSessionInfo:(NSDictionary *)sessionInfo;
@@ -978,7 +983,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface ZeugnisViewController : WebDataViewController <Service>
 @end
 
-@interface ClassViewController : WebDataViewController <Service>
+@interface ClassViewController : WebDataViewController <Service> {
+	UILabel *$yearLabel;
+	UILabel *$classLabel;
+}
 @end
 
 @interface PhotoViewController : WebDataViewController <Service>
@@ -1909,6 +1917,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		$keychainItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoApp" accessGroup:@"am.theiostre.portoapp.keychain"];
 		$gradeKeyItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppX" accessGroup:@"am.theiostre.portoapp.keychain"];
 		$papersKeyItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppY" accessGroup:@"am.theiostre.portoapp.keychain"];
+		$truyyutItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppZ" accessGroup:@"am.theiostre.portoapp.keychain"];
 
 		if (![[$keychainItem objectForKey:(id)kSecAttrAccount] isEqualToString:@""]) {
 			$accountInfo = [[NSDictionary dictionaryWithObjectsAndKeys:
@@ -1939,6 +1948,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)setAccountInfo:(NSDictionary *)accountInfo {
+	NSLog(@"SET ACCOUNT INFO %@ FROM %@", accountInfo, [NSThread callStackSymbols]);
+
 	if ($accountInfo != nil) [$accountInfo release];
 	
 	if (accountInfo == nil) {
@@ -1989,6 +2000,23 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	}
 
 	$papersID = [papersID retain];
+}
+
+- (NSString *)truyyut {
+	return $truyyut;
+}
+
+- (void)setTruyyut:(NSString *)truyyut {
+	if ($truyyut != nil) [$truyyut release];
+
+	if (truyyut == nil) [$truyyutItem resetKeychainItem];
+	else {
+		// FIXME: Same as above.
+		[$truyyutItem setObject:@"bakon" forKey:(id)kSecAttrAccount];
+		[$truyyutItem setObject:truyyut forKey:(id)kSecValueData];
+	}
+
+	$truyyut = [truyyut retain];
 }
 
 - (NSDictionary *)sessionInfo {
@@ -2114,32 +2142,24 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return [NSURLConnection sendSynchronousRequest:[self requestForPageWithURL:url method:method] returningResponse:response error:error];
 }
 
-- (void)generateGradeID {
+- (void)generateTruyyut {
 	NSURL *url = [NSURL URLWithString:[@"http://www.educacional.com.br/" stringByAppendingString:[[self sessionInfo] objectForKey:kPortoPortalKey]]];
 
 	NSURLResponse *response;
 	NSError *error;
 	NSData *portalData = [self loadPageWithURL:url method:@"GET" response:&response error:&error];
 	if (portalData == nil) {
-		[self setGradeID:nil];
+		[self setTruyyut:nil];
 		return;
 	}
 	
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:portalData];
-	/*XMLElement *boletimHref = [document firstElementMatchingPath:@"/html/body/div[@id='educ_geralexterno']/div[@id='educ_bgcorpo']/div[@id='educ_corpo']/div[@id='educ_conteudo']/div[@class='A']/div[@class='A_meio_bl']/div[@class='A_panel_bl  A_panel_hidden_bl ']/div[@class='botoes']/a[1]"];
-	NSString *function = [[boletimHref attributes] objectForKey:@"href"];
-	
-	if (function == nil) {
-		[document release];
-		[controller setGradeID:nil];
-		return;
-	}*/
         
         NSString *function = [[[document firstElementMatchingPath:@"/html/body"] content] gtm_stringByUnescapingFromHTML];
 	NSRange parRange = [function rangeOfString:@"javascript:fPS_Boletim"];
 	if (parRange.location == NSNotFound) {
 		[document release];
-		[self setGradeID:nil];
+		[self setTruyyut:nil];
 		return;
 	}
 
@@ -2148,15 +2168,27 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	NSString *truyyut = [parameter substringWithRange:NSMakeRange(2, closePar.location-3)];
 	NSLog(@"TRUYYUT: %@", truyyut);
 	[document release];
-	
-	url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.educacional.com.br/barra_logados/servicos/portoseguro_notasparciais.asp?x=%@", truyyut]];
-	NSData *data = [self loadPageWithURL:url method:@"GET" response:&response error:&error];
+
+	[self setTruyyut:truyyut];
+}
+
+- (void)generateGradeID {
+	if (![self truyyut]) [self generateTruyyut];
+	if ([self truyyut] == nil) {
+		[self setGradeID:nil];
+		return;
+	}
+
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.educacional.com.br/barra_logados/servicos/portoseguro_notasparciais.asp?x=%@", [self truyyut]]];
+	NSURLResponse *response;
+        NSError *error;
+        NSData *data = [self loadPageWithURL:url method:@"GET" response:&response error:&error];
 	if (data == nil) {
 		[self setGradeID:nil];
 		return;
 	}
 
-	document = [[XMLDocument alloc] initWithHTMLData:data];
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 	XMLElement *medElement = [document firstElementMatchingPath:@"/html/body/form/input"];
 	if (medElement == nil) {
 		[document release];
@@ -4637,17 +4669,99 @@ you will still get a valid token for name "Funcionário".
 
 /* Custom Services {{{ */
 
+/* Class {{{ */
+
 @implementation ClassViewController
 - (NSString *)serviceName {
 	return @"Turma Atual";
 }
+
+- (void)loadView {
+	[super loadView];
+	[[self view] setBackgroundColor:[UIColor whiteColor]];
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:[self serviceName]];
+}
+
+- (void)reloadData {
+	SessionController *sessionController = [SessionController sharedInstance];
+	if (![sessionController gradeID]) {
+		[sessionController generateGradeID];
+		if (![sessionController gradeID]) {
+			[self displayFailViewWithTitle:@"Sem ID de Notas." text:@kReportIssue];
+			return;
+		}
+	}
+
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.turmadoaluno.portoseguro.org.br?token=%@", [sessionController gradeID]]];
+	NSURLResponse *response;
+	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+
+	NSString *year = [[document firstElementMatchingPath:@"/html/body//span[@id='lblAno']"] content];
+	NSString *clazz = [[document firstElementMatchingPath:@"/html/body//span[@id='lblTurma']"] content];
+	if (year == nil || clazz == nil) {
+		[self displayFailViewWithTitle:@"Erro de Interpretação." text:@"LblAno/LblTurma" kReportIssue];
+		
+		[document release];
+		return;
+	}
+
+        [document release];
+
+	[self $performUIBlock:^{
+		[$yearLabel setText:year];
+		[$classLabel setText:clazz];
+
+		[self displayContentView];
+	}];
+}
+
+- (void)loadContentView {
+	[super loadContentView];
+	
+	CGFloat height = 100.f;
+	UIView *centerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, [$contentView bounds].size.height/2 - height/2, [$contentView bounds].size.width, height)];
+
+	$yearLabel = [[UILabel alloc] initWithFrame:CGRectMake(0.f, 0.f, [centerView bounds].size.width, 40.f)];
+	[$yearLabel setBackgroundColor:[UIColor whiteColor]];
+	[$yearLabel setTextColor:[UIColor blackColor]];
+        [$yearLabel setTextAlignment:NSTextAlignmentCenter];
+	[$yearLabel setFont:[UIFont fontWithName:@"HelveticaNeue-Light" size:pxtopt(40.f)]];
+        [centerView addSubview:$yearLabel];
+
+	$classLabel = [[UILabel alloc] initWithFrame:CGRectMake(0.f, 40.f, [centerView bounds].size.width, 60.f)];
+	[$classLabel setBackgroundColor:[UIColor whiteColor]];
+	[$classLabel setTextColor:[UIColor blackColor]];
+        [$classLabel setTextAlignment:NSTextAlignmentCenter];
+	[$classLabel setFont:[UIFont fontWithName:@"HelveticaNeue-Light" size:pxtopt(60.f)]];
+        [centerView addSubview:$classLabel];
+
+	[$yearLabel release];
+	[$classLabel release];
+        
+        [$contentView addSubview:centerView];
+	[centerView release];
+}
 @end
+
+/* }}} */
+
+/* Zeugnis {{{ */
 
 @implementation ZeugnisViewController
 - (NSString *)serviceName {
 	return @"Boletim";
 }
 @end
+
+/* }}} */
+
+/* Photo {{{ */
 
 @implementation PhotoViewController
 - (NSString *)serviceName {
@@ -4717,6 +4831,10 @@ you will still get a valid token for name "Funcionário".
 }
 @end
 
+/* }}} */
+
+/* Moodle {{{ */
+
 @implementation MoodleKeeperViewController
 - (NSString *)serviceName {
 	return @"Senha Moodle";
@@ -4724,6 +4842,10 @@ you will still get a valid token for name "Funcionário".
 @end
 
 /* }}} */
+
+/* }}} */
+
+/* Services {{{ */
 
 @implementation ServicesViewController
 - (id)init {
@@ -4864,6 +4986,8 @@ you will still get a valid token for name "Funcionário".
 	[super dealloc];
 }
 @end
+
+/* }}} */
 
 /* }}} */
 
@@ -5066,7 +5190,8 @@ static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
                                         [sessionController setAccountInfo:nil];
                                 }
                                 else {
-                                        AlertError(@"Erro de Login", @"Erro inesperado.");
+                                        NSLog(@"PORTO ERROR %d", [error code]);
+					AlertError(@"Erro de Login", @"Erro inesperado.");
                                 }
                         }
                 }

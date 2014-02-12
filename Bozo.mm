@@ -2,7 +2,7 @@
  iOS interface to the Colégio Visconde de Porto Seguro grade/news etc.
  
  Created by Daniel Ferreira in 9/09/2013
- (c) 2013 Bacon Coding Company, LLC
+ (c) 2013 Daniel Ferreira
  no rights whatsoever to the Fundação Visconde de Porto Seguro
  
  The source code and copies built with it and binaries shipped with this source distribution are licensed under the GNU General Public License version 3.
@@ -980,7 +980,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (NSString *)serviceName;
 @end
 
-@interface ZeugnisViewController : WebDataViewController <Service>
+@interface ZeugnisViewController : WebDataViewController <Service, UITableViewDataSource, UITableViewDelegate> {
+	NSMutableArray *$yearOptions;
+}
 @end
 
 @interface ClassViewController : WebDataViewController <Service> {
@@ -992,7 +994,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface PhotoViewController : WebDataViewController <Service>
 @end
 
-@interface MoodleKeeperViewController : WebDataViewController <Service>
+@interface MoodleKeeperViewController : UIViewController <Service>
 @end
 
 @interface ServicesViewController : UITableViewController <UIAlertViewDelegate, UITextFieldDelegate> {
@@ -4757,6 +4759,49 @@ you will still get a valid token for name "Funcionário".
 - (NSString *)serviceName {
 	return @"Boletim";
 }
+
+- (void)loadView {
+	[super loadView];
+	[[self view] setBackgroundColor:[UIColor whiteColor]];
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:[self serviceName]];
+}
+
+- (void)reloadData {
+	SessionController *sessionController = [SessionController sharedInstance];
+	if (![sessionController gradeID]) {
+		[sessionController generateGradeID];
+		if (![sessionController gradeID]) {
+			[self displayFailViewWithTitle:@"Sem ID de Notas." text:@kReportIssue];
+			return;
+		}
+	}
+
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notastrimestrais.portoseguro.org.br/NotasTrimestrais.aspx?token=%@", [sessionController gradeID]]];
+	NSURLResponse *response;
+	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+	
+	XMLElement *select = [document firstElementMatchingPath:@"/html/body//select[@id='ddlAno']"];
+	NSArray *options = [select elementsMatchingPath:@"./option"];
+	for (XMLElement *option in options) {
+		Pair *p = [[[Pair alloc] initWithObjects:[option content], [[option attributes] objectForKey:@"value"]] autorelease];
+		[$yearOptions addObject:p];
+	}
+
+        [document release];
+
+	[self $performUIBlock:^{
+		UITableView *tableView = (UITableView *)$contentView;
+		[tableView reloadData];
+
+		[self displayContentView];
+	}];
+}
 @end
 
 /* }}} */
@@ -4865,7 +4910,7 @@ you will still get a valid token for name "Funcionário".
 	ClassViewController *classController = [[ClassViewController alloc] initWithIdentifier:@"classservice"];
 	ZeugnisViewController *zeugnisController = [[ZeugnisViewController alloc] initWithIdentifier:@"zeugnisservice"];
 	PhotoViewController *photoController = [[PhotoViewController alloc] initWithIdentifier:@"photoservice"];
-	MoodleKeeperViewController *moodleController = [[MoodleKeeperViewController alloc] initWithIdentifier:@"moodleservice"];
+	MoodleKeeperViewController *moodleController = [[MoodleKeeperViewController alloc] init];
 
 	$controllers = [[NSArray alloc] initWithObjects:
 		classController,

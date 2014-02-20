@@ -125,6 +125,20 @@ static NSString *NSStringURLEncode(NSString *string) {
 static NSString *NSStringURLDecode(NSString *string) {
 	return [(NSString *)CFURLCreateStringByReplacingPercentEscapesUsingEncoding(NULL, (CFStringRef)string, CFSTR(""), kCFStringEncodingUTF8) autorelease];
 }
+
+static NSString *NSDictionaryURLEncode(NSDictionary *dict) {
+	NSMutableString *ret = [NSMutableString string];
+	
+	NSArray *allKeys = [dict allKeys];
+	for (NSString *key in allKeys) {
+		[ret appendString:NSStringURLEncode(key)];
+		[ret appendString:@"="];
+		[ret appendString:NSStringURLEncode([dict objectForKey:key])];
+		[ret appendString:@"&"];
+	}
+	
+	return [ret substringToIndex:[ret length]-1];
+}
 /* }}} */
 
 /* Unescaping HTML {{{ */
@@ -576,6 +590,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)loadSessionWithHandler:(void(^)(BOOL, NSError *))handler;
 - (void)unloadSession;
 
+- (NSArray *)authenticationCookies;
+
+- (NSURLRequest *)requestForPageWithURL:(NSURL *)url method:(NSString *)method cookies:(NSArray *)cookies;
 - (NSURLRequest *)requestForPageWithURL:(NSURL *)url method:(NSString *)method;
 - (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error;
 @end
@@ -980,8 +997,20 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (NSString *)serviceName;
 @end
 
+@interface ZeugnisListViewController : WebDataViewController <UITableViewDataSource, UITableViewDelegate> {
+	NSDictionary *$postKeys;
+	NSArray *$cookies;
+}
+
+- (id)initWithIdentifier:(NSString *)identifier postKeys:(NSDictionary *)dict cookies:(NSArray *)cookies;
+@end
+
 @interface ZeugnisViewController : WebDataViewController <Service, UITableViewDataSource, UITableViewDelegate> {
 	NSMutableArray *$yearOptions;
+	
+	NSString *$viewState;
+	NSString *$eventValidation;
+	NSArray *$cookies;
 }
 @end
 
@@ -2102,7 +2131,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[self setSessionInfo:nil];
 }
 
-- (NSURLRequest *)requestForPageWithURL:(NSURL *)url method:(NSString *)method {
+- (NSArray *)authenticationCookies {
 	NSHTTPCookie *aspCookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
 		@"www.educacional.com.br", NSHTTPCookieDomain,
 		@"/", NSHTTPCookiePath,
@@ -2122,7 +2151,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[[self sessionInfo] objectForKey:kPortoSessionIdKey], NSHTTPCookieValue,
 		nil]];
 
-	NSDictionary *headers = [NSHTTPCookie requestHeaderFieldsWithCookies:[NSArray arrayWithObjects:aspCookie, serverCookie, sessionCookie, nil]];
+	return [NSArray arrayWithObjects:aspCookie, serverCookie, sessionCookie, nil];
+}
+
+- (NSURLRequest *)requestForPageWithURL:(NSURL *)url method:(NSString *)method cookies:(NSArray *)cookies {
+	NSDictionary *headers = [NSHTTPCookie requestHeaderFieldsWithCookies:cookies];
 	NSLog(@"HEADERS %@", headers);
 
 	NSMutableURLRequest *urlRequest = [NSMutableURLRequest requestWithURL:url];
@@ -2138,6 +2171,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	}
 
 	return urlRequest;
+}
+
+- (NSURLRequest *)requestForPageWithURL:(NSURL *)url method:(NSString *)method {
+	return [self requestForPageWithURL:url method:method cookies:[self authenticationCookies]];
 }
 
 - (NSData *)loadPageWithURL:(NSURL *)url method:(NSString *)method response:(NSURLResponse **)response error:(NSError **)error {
@@ -4755,9 +4792,70 @@ you will still get a valid token for name "Funcionário".
 
 /* Zeugnis {{{ */
 
+@implementation ZeugnisListViewController
+- (id)initWithIdentifier:(NSString *)identifier postKeys:(NSDictionary *)dict cookies:(NSArray *)cookies {
+	if ((self = [super initWithIdentifier:identifier])) {
+		$postKeys = [dict retain];
+		$cookies = [cookies retain];
+	}
+        
+        return self;
+}
+
+- (void)loadView {
+	[super loadView];
+	[[self view] setBackgroundColor:[UIColor whiteColor]];
+}
+
+- (void)reloadData {
+	SessionController *sessionController = [SessionController sharedInstance];
+	
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notastrimestrais.portoseguro.org.br/NotasTrimestrais.aspx?%@", NSDictionaryURLEncode($postKeys)]];
+        //NSArray *cookies = [[sessionController authenticationCookies] arrayByAddingObjectsFromArray:$cookies];
+	NSURLRequest *request = [sessionController requestForPageWithURL:url method:@"POST" cookies:$cookies];
+	
+	NSURLResponse *response;
+	NSData *data = [NSURLConnection sendSynchronousRequest:request returningResponse:&response error:NULL];
+	if (data == nil) {
+		[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
+		return;
+	}
+	NSLog(@"wat teh shit %@", [[[[XMLDocument alloc] initWithHTMLData:data] firstElementMatchingPath:@"/html/body"] content]);
+	
+	NSURLRequest *boletimRequest = [sessionController requestForPageWithURL:[NSURL URLWithString:@"http://notastrimestrais.portoseguro.org.br/Boletim.aspx"] method:@"GET" cookies:$cookies];
+	data = [NSURLConnection sendSynchronousRequest:boletimRequest returningResponse:&response error:NULL];
+	if (data == nil) {
+		[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
+		return;
+	}
+	
+	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+	NSLog(@"BODY: %@", [[document firstElementMatchingPath:@"/html/body"] content]);
+	[document release];
+}
+
+- (void)dealloc {
+	[$postKeys release];
+	[$cookies release];
+	[super dealloc];
+}
+@end
+
 @implementation ZeugnisViewController
 - (NSString *)serviceName {
 	return @"Boletim";
+}
+
+- (id)initWithIdentifier:(NSString *)identifier {
+	if ((self = [super initWithIdentifier:identifier])) {
+		$yearOptions = [[NSMutableArray alloc] init];
+		
+		$viewState = nil;
+		$eventValidation = nil;
+		$cookies = nil;
+	}
+
+	return self;
 }
 
 - (void)loadView {
@@ -4771,6 +4869,11 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)reloadData {
+	[$yearOptions removeAllObjects];
+	if ($cookies != nil) [$cookies release];
+	if ($viewState != nil) [$viewState release];
+	if ($eventValidation != nil) [$eventValidation release];
+
 	SessionController *sessionController = [SessionController sharedInstance];
 	if (![sessionController gradeID]) {
 		[sessionController generateGradeID];
@@ -4781,11 +4884,21 @@ you will still get a valid token for name "Funcionário".
 	}
 
 	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notastrimestrais.portoseguro.org.br/NotasTrimestrais.aspx?token=%@", [sessionController gradeID]]];
-	NSURLResponse *response;
+	NSHTTPURLResponse *response;
 	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+	if (data == nil) {
+		[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
+		return;
+	}
+
+	$cookies = [[NSHTTPCookie cookiesWithResponseHeaderFields:[response allHeaderFields] forURL:[response URL]] retain];
+	NSLog(@"HI COOK %@", $cookies);
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 	
+	$viewState = [[[[document firstElementMatchingPath:@"/html/body//input[@id='__VIEWSTATE']"] attributes] objectForKey:@"value"] retain];
+	$eventValidation = [[[[document firstElementMatchingPath:@"/html/body//input[@id='__EVENTVALIDATION']"] attributes] objectForKey:@"value"] retain];
+
 	XMLElement *select = [document firstElementMatchingPath:@"/html/body//select[@id='ddlAno']"];
 	NSArray *options = [select elementsMatchingPath:@"./option"];
 	for (XMLElement *option in options) {
@@ -4801,6 +4914,63 @@ you will still get a valid token for name "Funcionário".
 
 		[self displayContentView];
 	}];
+}
+
+- (void)loadContentView {
+	UITableView *tableView = [[UITableView alloc] initWithFrame:FixViewBounds([[self view] bounds]) style:UITableViewStylePlain];
+	[tableView setDataSource:self];
+	[tableView setDelegate:self];
+
+	$contentView = tableView;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return 1;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	return [$yearOptions count];
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PortoAppZeugnisViewControllerCell"];
+	if (cell == nil) {
+		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppZeugnisViewControllerCell"] autorelease];
+		[cell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator];
+	}
+	
+	Pair *yearValue_ = [$yearOptions objectAtIndex:[indexPath row]];
+	NSString *year = (NSString *)yearValue_->obj1;
+	[[cell textLabel] setText:year];
+
+	return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	Pair *yearValue_ = [$yearOptions objectAtIndex:[indexPath row]];
+	NSDictionary *dict = [NSDictionary dictionaryWithObjectsAndKeys:
+		yearValue_->obj2, @"ddlAno",
+		$viewState, @"__VIEWSTATE",
+		$eventValidation, @"__EVENTVALIDATION",
+		@"UpdatePanel1%7CbtVisualizar", @"ScriptManager1",
+		@"Visualizar", @"btVisualizar",
+		nil];
+
+	ZeugnisListViewController *listController = [[[ZeugnisListViewController alloc] initWithIdentifier:@"zeugnislist" postKeys:dict cookies:$cookies] autorelease];
+	[listController setTitle:yearValue_->obj1];
+	[[self navigationController] pushViewController:listController animated:YES];
+
+	[tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+- (void)dealloc {
+	[$yearOptions release];
+	
+        if ($viewState != nil) [$viewState release];
+        if ($eventValidation != nil) [$eventValidation release];
+        if ($cookies != nil) [$cookies release];
+	
+        [super dealloc];
 }
 @end
 

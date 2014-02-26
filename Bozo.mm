@@ -4811,7 +4811,6 @@ you will still get a valid token for name "Funcionário".
 	SessionController *sessionController = [SessionController sharedInstance];
 	
 	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notastrimestrais.portoseguro.org.br/NotasTrimestrais.aspx?%@", NSDictionaryURLEncode($postKeys)]];
-        //NSArray *cookies = [[sessionController authenticationCookies] arrayByAddingObjectsFromArray:$cookies];
 	NSURLRequest *request = [sessionController requestForPageWithURL:url method:@"POST" cookies:$cookies];
 	
 	NSURLResponse *response;
@@ -4820,7 +4819,6 @@ you will still get a valid token for name "Funcionário".
 		[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
 		return;
 	}
-	NSLog(@"wat teh shit %@", [[[[XMLDocument alloc] initWithHTMLData:data] firstElementMatchingPath:@"/html/body"] content]);
 	
 	NSURLRequest *boletimRequest = [sessionController requestForPageWithURL:[NSURL URLWithString:@"http://notastrimestrais.portoseguro.org.br/Boletim.aspx"] method:@"GET" cookies:$cookies];
 	data = [NSURLConnection sendSynchronousRequest:boletimRequest returningResponse:&response error:NULL];
@@ -4952,7 +4950,7 @@ you will still get a valid token for name "Funcionário".
 		yearValue_->obj2, @"ddlAno",
 		$viewState, @"__VIEWSTATE",
 		$eventValidation, @"__EVENTVALIDATION",
-		@"UpdatePanel1%7CbtVisualizar", @"ScriptManager1",
+		@"UpdatePanel1%7CbtVisualizar", @"ScriptManager1", // do we need this key?
 		@"Visualizar", @"btVisualizar",
 		nil];
 

@@ -653,6 +653,8 @@ static int XMLElementOutputCloseCallback(void *context) {
 }
 
 - (void)setFrame:(CGRect)f {
+	f.origin.y -= 1;
+	f.size.height += 1;
 	[super setFrame:f];
 	CGRect b = [self bounds];
 	// b.size.height -= 1; // leave room for the seperator line

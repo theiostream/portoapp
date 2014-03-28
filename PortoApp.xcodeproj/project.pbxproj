@@ -27,6 +27,7 @@
 		EDB4081B17E25F7500521640 /* Default-568h@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = EDB4081A17E25F7500521640 /* Default-568h@2x.png */; };
 		EDB4082317E25FA600521640 /* Bozo.mm in Sources */ = {isa = PBXBuildFile; fileRef = EDB4082217E25FA600521640 /* Bozo.mm */; };
 		EDBFFDD517E926A800C393D5 /* libxml2.2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */; };
+		EDC81B2818E24AF100DCCF4E /* Icon@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = EDC81B2718E24AF100DCCF4E /* Icon@2x.png */; };
 		EDD1A9F717E7C27B00AA26CF /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDD1A9F617E7C27B00AA26CF /* Security.framework */; };
 		EDEFF75A1889E1CD00FB7B2A /* parser.c in Sources */ = {isa = PBXBuildFile; fileRef = EDEFF7591889E1CD00FB7B2A /* parser.c */; };
 		EDEFF75C1889FE3C00FB7B2A /* libb64.a in Frameworks */ = {isa = PBXBuildFile; fileRef = EDEFF75B1889FE3C00FB7B2A /* libb64.a */; };
@@ -57,6 +58,7 @@
 		EDB4082117E25FA600521640 /* Bozo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Bozo.h; sourceTree = "<group>"; };
 		EDB4082217E25FA600521640 /* Bozo.mm */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.cpp.objcpp; path = Bozo.mm; sourceTree = "<group>"; tabWidth = 8; };
 		EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.2.dylib; path = usr/lib/libxml2.2.dylib; sourceTree = SDKROOT; };
+		EDC81B2718E24AF100DCCF4E /* Icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = "Icon@2x.png"; path = "../../../../Desktop/Icon@2x.png"; sourceTree = "<group>"; };
 		EDD1A9F617E7C27B00AA26CF /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		EDEFF7591889E1CD00FB7B2A /* parser.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = parser.c; path = viewstate/parser.c; sourceTree = "<group>"; };
 		EDEFF75B1889FE3C00FB7B2A /* libb64.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libb64.a; path = ../../../../../usr/local/lib/libb64.a; sourceTree = "<group>"; };
@@ -159,6 +161,7 @@
 				EDB4081A17E25F7500521640 /* Default-568h@2x.png */,
 				ED80CC2818958C0B0078D82B /* news_base.html */,
 				ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */,
+				EDC81B2718E24AF100DCCF4E /* Icon@2x.png */,
 			);
 			name = "Supporting Files";
 			sourceTree = "<group>";
@@ -216,6 +219,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				ED0AC2AB18A98F6000277CAB /* news_tab@2x.png in Resources */,
+				EDC81B2818E24AF100DCCF4E /* Icon@2x.png in Resources */,
 				ED6751611899AFC600E6FAEF /* about.html in Resources */,
 				EDB4080F17E25F7500521640 /* InfoPlist.strings in Resources */,
 				EDB4081717E25F7500521640 /* Default.png in Resources */,

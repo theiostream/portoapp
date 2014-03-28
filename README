@@ -3,49 +3,39 @@ Go against the cameras at my school! Like "Vigilantes do Porto" on Facebook! ;P
 #########
 
 Hi! Welcome to the Porto App!
-Licensed under the GNU General Public License v3, (c) 2014 Daniel Ferreira
+Licensed under the GNU General Public License v3
+(c) 2014 Daniel Ferreira
 
 #########
 Se você é um funcionário do Colégio Visconde de Porto Seguro ou da Fundação Visconde de Porto Seguro, informo que este aplicativo *não* está lançado e nem tem intento de sê-lo sem autorização prévia.
-
-Respeitarei qualquer pedido de remoção deste código da Internet.
 #########
 
 #########
 UPDATE AS OF 26/1/2013
+See history/JAN_2013.txt
 
-I'm coming back to school as a high school student tomorrow, and it's only suitable that I add some notes.
+As of now, that this app is feature-complete, there are three things to be done:
+1. Implement NSURLRequest caching so that we can get the old loaded data if we're offline or on 3G (show something like FBMessenger!);
+2. Fix URGENT FIXMEs, FIXMEs and TODOs (in decreasing order of importance).
+3. Attempt to:
+   a) Convince Porto to talk to Apple's push notification system for God's sake so we can get new grade notifications
+   b) Make Porto /and/ myself suffer by having some crawling service in ac3xx's server.
 
-The first issue with the whole thing is memory management. I've been careless about handling that, and when I open Grades, News and Papers Controllers I get to ~70MB memory consumption. I plan on lowering that.
-[UPDATE] Huge memory leaks fixed.
+WHAT'S UP NOW?
 
-The second global issue is efficiency. I've only tested the app with the Simulator and my iPhone 4S, so I'm sure that in older devices (I support iOS 6.x) stuff won't work out that nicely. I will also review all that. But I currently use CoreText for pretty much the whole News root controller/grades controller UI and that's a big start -- the reason I don't do so for papers is that since the cells are simply show-only-text ones I doubted it'd matter that much. But I can easily use CoreText there too if it's required.
-[UPDATE] Efficiency on the News Table View was dramati
+Well, the two first things above are of absolute priority for the decency of the application. While I figure out how I'm going to release this I'm going to work on that.
 
-The third global issue is error handling. I'm unsure how it'd react in bad circumstances of access such as Edge/3G signal in my school's grounds, but the fail views are pretty much OK, they just need their UI impl'd (but they are getting data fine and are perfectly integrated with the web data controller).
+Regardless, the question is, how will this app be released?
 
-So, the main feature of the app -- the grades controller -- is (sorta) finished. There are a couple of bugs to be fixed, but nothing critical, and there's one feature I'd still like to implement: a simulator for combining period grades so one can know whether he'll get a Recuperação, will be subject to APcc, or will just be approved. That's something I don't know how I'll implement and don't plan for the initial release.
-[UPDATE] In fact, I plan to do it by parsing the Boletim page! That'd be pretty cool and I already have the data figured out, now all that needs to be done is parsing and actually understanding how Recuperações work (since no one has cared enough to answer me in detail).
+As far as my understanding goes as of now, Porto has declined to buy this app from me or use my code etc. due to some weird design rules they have, yet they have authorized me to release it as I wish. I must confirm this with my contact, but if this is the case I will release this app on the App Store for a price of $0.99USD, which I find only fair given the amount of labor put on this and how much 3G you end up saving my not loading all images in Porto's homepage. Plus, it's way faster than going to the website itself, plus all of its goodies etc.
 
-About News, there were numerous reasons most of it's web based (and a lame web based that doesn't look native at all <sadface>), but I plan on eventually using better JavaScript optimizations on the web content to make it look nicer. I don't think there's much I'll be able to do about the Archives but most certainly the News display can be improved.
-[UPDATE] News display was also dramatically improved, and as mentioned here not much can be done about Archives.
+If they decline my rights to release it, I'll most likely find a way to rid myself of all stuff copyrighted by them and release it anyway. I doubt there should be major consequences.
 
-About Papers, it's pretty much complete aside from memory/efficiency issues. Nothing much to be added up there.
+Thanks to the effort of Guilherme Stark, I now have a pretty cool icon based on the Porto logo image, and only one asset (namely, the Grades tab bar item) is missing. I'd ask him to do those but since he's tired from working for about 8 hours in a German presentation we have for tomorrow I think I better not ask.
 
-About the Login Controller, its backend is completely ok, but it has no UI. Regardless, that'd also be simple as hell -- just add a Logout button, a Login button so we're not constrained to the popup for making logins (the popup! there might be some bugs on it) and that's pretty much it. I might also add an username label (duh) and some user info (maybe stick one's class here instead of in Services?)
-[UPDATE] The Login Controller has been finished.
+For now, it's this, and I hope to update this README as soon as a release is done!
 
-About Services, I'm completely unsure! It's 0% implemented, and the one thing I can think about putting in there is the Boletim (which will be another web view, sorry! Grades controller should be good enough to simulate/display grades, even more when I get to implement the whole year-wide analysis) and that's it. Maybe browsing some more in the Porto app might give me some info. (Links to stuff like the dictionary that would open Safari? Guides to setting up your Porto email (who uses that?!) in a mail client... But then again, those would require barely any coding).
-[UPDATE] Class and Student Photo were implemented. A Moodle Password Keeper can be easily implemented, and well, about Boletim, I want to make it not just as the classical webpage but as something similar to Notas Parciais now, which may take some work.
-
-Finally, about assets, I'll find someone who can give me toolbar icons. Not much else is needed.
-
-At this point, I consider the app 90% complete. Most programmers say that the last 10% of the program is 90% of the whole effort, and I doubt fixing the global issues will be a walk in the park, but what I can say for sure is that as far as features are concerned, the app is practically complete.
-[UPDATE] I'd say about now 85% of the app is complete, due to deciding that Boletim should be like Notas Parciais.
-
-About how/when its release is going to be, I don't know. It should be done in few weeks, a month and a half tops (unless high school decides to take my life away), but I don't know if Porto will want to release themselves (I haven't yet shown it to their IT department), or if they'll let me release it on the App Store, or if they'll put dumb restrictions on it which I'll be sure to bypass and release (heck, a friend just showed me a sucky as fuck app which accessed Porto's news/etc. so I doubt it), but what I know is that it WILL be released eventually.
-
-Deep thanks to Dustin (who helped a lot in the start when I got into CoreText and is always around), Max (who always comes up with some cool implementation ideas), Guilherme, Lucas and Natham (for being interested) and Profs. Paulinho, Fernando and Moraes for taking a look at it.
+Thank you all for everything.
 #########
 
 Under development! A couple of things:
@@ -53,6 +43,6 @@ Under development! A couple of things:
 
 2. Huge file. Use vim and foldings to make sense out of this.
 
-3. Send me complaints about the code! I'd like to hear from you! (If something is very very ugly, don't worry, I've most likely noticed it and am working on it.)
+3. Send me complaints about the code! I'd like to hear from you!
 
 4. Licensed under the GNU General Public License version 3.

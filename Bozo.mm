@@ -797,6 +797,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	UIWebView *$webView;
 	FailView *$failView;
 	LoadingIndicatorView *$loadingView;
+
+	UIBarButtonItem *$refreshButton;
+	UIBarButtonItem *$spinnerButton;
 }
 - (void)loadPage:(NSString *)page;
 - (void)loadURL:(NSURL *)url;
@@ -2718,12 +2721,15 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (id)forwardingTargetForSelector:(SEL)aSelector {
-	[self view];
+	[self view]; // FIXME: ?
 	return (![self respondsToSelector:aSelector] && [self shouldForwardSelector:aSelector]) ? $webView : self;
 }
 
 - (void)loadView {
 	[super loadView];
+	
+	$refreshButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(reload)];
+	$spinnerButton = [[UIBarButtonItem alloc] initWithCustomView:[[[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray] autorelease]];
 	
 	//$webView = [[UIWebView alloc] initWithFrame:CGRectMake(0.f, 0.f, [[UIScreen mainScreen] bounds].size.width, SYSTEM_VERSION_GT_EQ(@"7.0") ? [[UIScreen mainScreen] bounds].size.height : [[UIScreen mainScreen] bounds].size.height-HEIGHT_OF_TABBAR-HEIGHT_OF_NAVBAR-HEIGHT_OF_STATUSBAR+1.f)];
 	$webView = [[UIWebView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
@@ -2742,12 +2748,28 @@ you will still get a valid token for name "Funcionário".
 
 - (void)viewDidLoad {
         [super viewDidLoad];
+
+	[[self navigationItem] setRightBarButtonItem:$spinnerButton];
+	[(UIActivityIndicatorView *)[$spinnerButton customView] startAnimating];
         
 	// I don't want this to be so, but UIWebView has some sort of bug when loading pdf's that'll make it require it :(
 	if (SYSTEM_VERSION_GT_EQ(@"7.0"))
                 [self setAutomaticallyAdjustsScrollViewInsets:NO];
 	
 	[[$loadingView activityIndicatorView] startAnimating];
+}
+
+- (void)reload {
+	[$webView reload];
+
+	[$webView setHidden:YES];
+	[$failView setHidden:YES];
+	
+	[$loadingView setHidden:NO];
+	[[$loadingView activityIndicatorView] startAnimating];
+
+	[[self navigationItem] setRightBarButtonItem:$spinnerButton];
+	[(UIActivityIndicatorView *)[$spinnerButton customView] startAnimating];
 }
 
 - (void)loadURL:(NSURL *)pageURL {
@@ -2777,6 +2799,9 @@ you will still get a valid token for name "Funcionário".
 	[[$loadingView activityIndicatorView] stopAnimating];
 	[$failView setHidden:YES];
 
+	[[self navigationItem] setRightBarButtonItem:$refreshButton];
+	[(UIActivityIndicatorView *)[$spinnerButton customView] stopAnimating];
+
 	[[self webView] setHidden:NO];
 }
 
@@ -2784,6 +2809,9 @@ you will still get a valid token for name "Funcionário".
 	[$loadingView setHidden:YES];
 	[[$loadingView activityIndicatorView] stopAnimating];
 	[[self webView] setHidden:YES];
+
+	[[self navigationItem] setRightBarButtonItem:$refreshButton];
+	[(UIActivityIndicatorView *)[$spinnerButton customView] stopAnimating];
 	
 	[$failView setTitle:@"Erro de request"];
 	[$failView setText:@"Não pôde carregar o link especificado."];
@@ -3422,7 +3450,7 @@ you will still get a valid token for name "Funcionário".
 		NSData *data = [NSData dataWithContentsOfURL:$newsURL];
 		if (data == nil) {
 			dispatch_sync(dispatch_get_main_queue(), ^{
-				[self executeJavascript:@"document.body.innerHTML='<h1>ERRO (newsload:baddata).</h1> <h3>Contate q@theiostream.com e descreva o problema.</h3>';"];
+				[self executeJavascript:@"document.body.innerHTML='<h1>ERRO DE CONEXÃO (newsload:baddata).</h1> <h3>Contate q@theiostream.com e descreva o problema.</h3>';"];
 				[super webViewDidFinishLoad:webView];
 			});
 			
@@ -3600,7 +3628,7 @@ you will still get a valid token for name "Funcionário".
 }	
 
 - (void)reloadData {
-	[super reloadData];
+	//[super reloadData];
 	[$imageData removeAllObjects];
 
 	NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
@@ -3998,19 +4026,22 @@ you will still get a valid token for name "Funcionário".
 @end
 
 @implementation SubjectTableViewCellContentView
-// URGENT FIXME: $NoGrade is unhandled here!!!
 - (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
 	CGFloat zoneWidth2 = rect.size.width / 5;
 	
-	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:[[self container] grade]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	NSString *gradeString__ = ![[self container] hasGrade] ? @"N/A" : [[self container] grade];
+	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
 	CFAttributedStringRef valueString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Valor\n" stringByAppendingString:[[self container] value]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange valueContentRange = CFRangeMake(5, CFAttributedStringGetLength(valueString_)-5);
-	CFAttributedStringRef percentString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"%\n" stringByAppendingString:[[self container] gradePercentage]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	NSString *percentString__ = ![[self container] hasGrade] ? @"N/A" : [[self container] gradePercentage];
+	CFAttributedStringRef percentString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"%\n" stringByAppendingString:percentString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange percentContentRange = CFRangeMake(2, CFAttributedStringGetLength(percentString_)-2);
-	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:[[self container] average]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	NSString *averageString__ = ![[self container] hasAverage] ? @"N/A" : [[self container] average];
+	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:averageString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange averageContentRange = CFRangeMake(5, CFAttributedStringGetLength(averageString_)-5);
-	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:[NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	NSString *totalString__ = ![[self container] hasGrade] ? @"N/A" : [NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]];
+	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:totalString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange totalContentRange = CFRangeMake(5, CFAttributedStringGetLength(totalString_)-5);
 
 	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
@@ -4525,7 +4556,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)reloadData {
-	[super reloadData];
+	//[super reloadData];
 	SessionController *sessionController = [SessionController sharedInstance];
 
 	if ($rootContainer != nil) {
@@ -4818,7 +4849,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)reloadData {
-	[super reloadData];
+	//[super reloadData];
 
 	[$yearOptions removeAllObjects];
 	[$periodOptions removeAllObjects];
@@ -4994,7 +5025,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)reloadData {
-	[super reloadData];
+	//[super reloadData];
 	
 	if ($folder == NULL) {
 		[self setTitle:@"Circulares"];
@@ -5611,7 +5642,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)reloadData {
-	[super reloadData];
+	//[super reloadData];
 	
 	[(UIImageView *)[[self contentView] viewWithTag:55] setImage:nil];
 
@@ -5911,7 +5942,7 @@ static void ReachabilityCallback(SCNetworkReachabilityRef target, SCNetworkReach
 	NSLog(@"CONNECTED: %d (st=%d)", status != NotReachable, status);
 	if (status != NotReachable) {
 		NSLog(@"REACHABLE NOW");
-		if (![[SessionController sharedInstance] hasSession]) {
+		if ([[SessionController sharedInstance] hasAccount] && ![[SessionController sharedInstance] hasSession]) {
 			NSLog(@"PERFORM LOGIN");
 			[self performLogin];
 			[self reloadData];

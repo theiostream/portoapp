@@ -272,7 +272,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    cp -r ${APP} /Users/BobNelson/Documents/Projects/PortoApp/Releases\n\n    /usr/bin/ldid -S/Users/BobNelson/Documents/Projects/PortoApp/ent.xml ${APP}/PortoApp\n\n    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.148:/Applications/\n    sleep 5\n    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.148 \"killall -9 backboardd\"\nfi";
+			shellScript = "\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    cp -r ${APP} /Users/BobNelson/Documents/Projects/PortoApp/Releases\n\n    /usr/bin/ldid -S/Users/BobNelson/Documents/Projects/PortoApp/ent.xml ${APP}/PortoApp\n\n#    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.148:/Applications/\n#    sleep 5\n#    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.148 \"killall -9 backboardd\"\nfi";
 		};
 /* End PBXShellScriptBuildPhase section */
 

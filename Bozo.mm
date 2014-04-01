@@ -9,9 +9,14 @@
  The App Store copy has all rights reserved.
  */
 
-// Tips!
+// Tips:
 // [23:41:33] <@DHowett> theiostream: At the top of the function, get 'self.bounds' out into a local variable. each time you call it is a dynamic dispatch because the compiler cannot assume that it has no side-effects
-// URGENT FIXME [23:42:13] <@DHowett> theiostream: the attributed strings and their CTFrameshit should be cached whenver possible. do not create a new attributed string every time the rect is drawn
+
+// Global TODOs:
+// IMPLEMENT PRETTY SOON: URL Request Caching better handling
+// IMPLEMENT PRETTY SOON: Better handling of the fuckshit view controller view bounds thing
+// IMPLEMENT PRETTY SOON [23:42:13] <@DHowett> theiostream: the attributed strings and their CTFrameshit should be cached whenver possible. do not create a new attributed string every time the rect is drawn
+// IMPLEMENT PRETTY SOON: Push Notifications
 
 /* Credits {{{
 
@@ -612,6 +617,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @property (nonatomic, assign) id<RecoveryTableViewCellDelegate> delegate;
 @property (nonatomic, retain) GradeContainer *container;
+@property (nonatomic, retain) GradeContainer *backupContainer;
 
 @property (nonatomic, retain) NSString *rightText;
 @property (nonatomic, retain) NSString *topText;
@@ -626,6 +632,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 @interface RecoveryView : UIView <UITableViewDataSource, UITableViewDelegate, RecoveryTableViewCellDelegate> {
 	GradeContainer *$container;
+	GradeContainer *$backupContainer;
+
 	UITableView *$tableView;
 
 	GradeContainer *$firstSecondContainer;
@@ -1272,7 +1280,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 /* Pie Chart View {{{ */
 
-// URGENT FIXME: Don't have repeated views. Maybe reuse at least the PickerActionSheet?
+// FIXME: Don't have repeated views. Maybe reuse at least the PickerActionSheet?
 #define kPickerActionSheetSpaceAboveBottom 5.f
 @implementation PickerActionSheet
 - (id)initWithHeight:(CGFloat)height pieChartView:(PieChartView *)pieChartView {
@@ -1849,9 +1857,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 // This whole thing, much like GradeContainer but a little worse, is completely undynamic.
 // But unlike GradeContainer, there isn't much to be done here.
 
-// URGENT FIXME: Add the click-on-grade-label feature to return to the original value.
 @implementation RecoveryTableViewCell
-@synthesize delegate, container, rightText, topText, bottomText;
+@synthesize delegate, container, backupContainer, rightText, topText, bottomText;
 
 - (id)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)identifier {
 	if ((self = [super initWithStyle:style reuseIdentifier:identifier])) {
@@ -1915,6 +1922,19 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	CFRelease(boldFont);
 }
 
+- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
+	[super touchesEnded:touches withEvent:event];
+	
+	if ([container isRecovery]) return;
+
+	UITouch *touch = [touches anyObject];
+	CGPoint location = [touch locationInView:self];
+	if (CGRectContainsPoint(CGRectMake([self bounds].size.width - 48.f, 0.f, 48.f, [self bounds].size.height), location)) {
+		[$slider setValue:[[backupContainer grade] floatValue]/10 animated:YES];
+		[self sliderChanged:nil];
+	}
+}
+
 - (void)layoutSubviews {
 	[super layoutSubviews];
 
@@ -1934,6 +1954,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)dealloc {
 	[$slider release];
 	[container release];
+	[backupContainer release];
 
 	[super dealloc];
 }
@@ -1942,9 +1963,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @implementation RecoveryView
 - (id)initWithContainer:(GradeContainer *)container width:(CGFloat)width {
 	// We do a copy since we can play with this container for our simulation as much as we feel like it.
-	NSLog(@"CONTAINER %p", container);
+	$backupContainer = [container retain];
 	$container = [container copy];
-	NSLog(@"CONTAINER %p COPY %p", container, $container);
 	
 	if ((self = [super initWithFrame:CGRectMake(0.f, 0.f, width, [self cellCount] * 56.f + 2.f)])) {
 		[$container calculateGradeFromSubgrades];
@@ -2029,17 +2049,22 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	NSArray *periods = [$container subGradeContainers];
 	
 	GradeContainer *container;
+	GradeContainer *backupContainer = nil;
 	switch ([indexPath row]) {
 		case 0:
 			container = [periods objectAtIndex:0];
+			backupContainer = [[$backupContainer subGradeContainers] objectAtIndex:0];
 			break;
 		case 1:
 			container = [periods objectAtIndex:1];
+			backupContainer = [[$backupContainer subGradeContainers] objectAtIndex:1];
 			break;
 		case 2: {
 			if (([[[periods objectAtIndex:0] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:0] isAboveAverage]) &&
-			    ([[[periods objectAtIndex:1] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:1] isAboveAverage]))
+			    ([[[periods objectAtIndex:1] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:1] isAboveAverage])) {
 				container = [periods objectAtIndex:2];
+				backupContainer = [[$backupContainer subGradeContainers] objectAtIndex:2];
+                        }
 			else {
 				container = $firstSecondContainer;
 			}
@@ -2052,6 +2077,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 				container = [self recoveredGrades]>kPortoAverage/10 ? $thirdContainer : $annualContainer;
 			else {
 				container = [periods objectAtIndex:2];
+				backupContainer = [[$backupContainer subGradeContainers] objectAtIndex:2];
 			}
 			break;
 		case 4:
@@ -2063,6 +2089,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[cell setRightText:[self rightTextForContainer:container]];
 	[cell setBottomText:![container isRecovery] ? nil : [self recoveryTextForContainer:container]];
 	[cell setContainer:container];
+	[cell setBackupContainer:backupContainer];
 
 	[cell setNeedsDisplay];
 	return cell;
@@ -2093,11 +2120,19 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		if ([[firstPeriodContainer grade] floatValue] < kPortoAverage/10 && [[secondPeriodContainer grade] floatValue] < kPortoAverage/10) {
 			return [NSString stringWithFormat:@"Nota 1ºP: %.2f\tNota 2ºP: %.2f", firstPeriodGrade, secondPeriodGrade];
 		}
-		else if ([[firstPeriodContainer grade] floatValue] < kPortoAverage/10) {
-			return [NSString stringWithFormat:@"Nota 1º Período: %.2f", firstPeriodGrade];
-		}
-		else if ([[secondPeriodContainer grade] floatValue] < kPortoAverage/10) {
-			return [NSString stringWithFormat:@"Nota 2º Período: %.2f", secondPeriodGrade];
+		else {
+			NSString *compulsory;
+			if ([[[[$container subGradeContainers] objectAtIndex:0] grade] floatValue] + [[[[$container subGradeContainers] objectAtIndex:1] grade] floatValue]*2 < kPortoAverage/10 + (kPortoAverage/10)*2)
+				compulsory = @"(Obrigatório)";
+			else
+				compulsory = @"(Opcional)";
+
+			if ([[firstPeriodContainer grade] floatValue] < kPortoAverage/10) {
+				return [NSString stringWithFormat:@"%@ Nota 1º Período: %.2f", compulsory, firstPeriodGrade];
+			}
+			else if ([[secondPeriodContainer grade] floatValue] < kPortoAverage/10) {
+				return [NSString stringWithFormat:@"%@ Nota 2º Período: %.2f", compulsory, secondPeriodGrade];
+			}
 		}
 
 		return @"RC_ERROR2 Reportar para q@theiostream.com";
@@ -2148,6 +2183,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	return totalGrade / [$container totalWeight];
 }
 
+// FIXME: Don't reload data every time there's a value change; that's too consuming.
+// Should instead see when a change is necessary.
 - (void)sliderValueChangedForRecoveryCell:(RecoveryTableViewCell *)cell {
 	[[cell container] setGrade:[NSString stringWithFormat:@"%.2f", [[cell slider] value]*10]];
 	[$container calculateGradeFromSubgrades];
@@ -2161,6 +2198,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)dealloc {
 	[$container release];
+	[$backupContainer release];
+
 	[$tableView release];
 
 	[$firstSecondContainer release];
@@ -4463,7 +4502,7 @@ you will still get a valid token for name "Funcionário".
 }
 @end
 
-// URGENT FIXME Add a page control.
+// TODO Add a page control.
 @implementation GradesListViewController
 @synthesize year = $year, period = $period;
 

@@ -2915,7 +2915,7 @@ you will still get a valid token for name "Funcionário".
                 
 		[self $performUIBlock:^{
 			[(UIActivityIndicatorView *)[$spinnerButton customView] stopAnimating];
-			[[self navigationItem] setRightBarButtonItem:$refreshButton];
+			if ([self allowsRefresh]) [[self navigationItem] setRightBarButtonItem:$refreshButton];
 		}];
 	};
 	
@@ -2925,6 +2925,10 @@ you will still get a valid token for name "Funcionário".
 
 - (void)reloadData {
 	[self displayContentView];
+}
+
+- (BOOL)allowsRefresh {
+	return YES;
 }
 
 - (Class)contentViewClass {
@@ -5015,8 +5019,6 @@ you will still get a valid token for name "Funcionário".
 @implementation PapersViewController
 - (id)initWithIdentifier:(NSString *)identifier {
 	if ((self = [super initWithIdentifier:identifier])) {
-		init_viewstate_context();
-		
 		$viewState = NULL;
 		$folder = NULL;
 	}
@@ -5024,19 +5026,24 @@ you will still get a valid token for name "Funcionário".
 	return self;
 }
 
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:@"Circulares"];
+}
+
 - (void)reloadData {
 	//[super reloadData];
-	
-	if ($folder == NULL) {
-		[self setTitle:@"Circulares"];
-		
+	if (self == [[[self navigationController] viewControllers] objectAtIndex:0]) {
+		if ($folder != NULL) $folder = NULL;
+		if ($viewState != NULL) { free_viewstate($viewState); $viewState = NULL; }
+
 		SessionController *sessionController = [SessionController sharedInstance];
 		if (![sessionController hasSession]) {
 			[self displayFailViewWithTitle:@"Sem autenticação." text:@"Realize login no menu de Contas."];
 			return;
 		}
 		if (![sessionController papersID]) {
-                        NSLog(@"err id");
+			NSLog(@"err id");
 			[self displayFailViewWithTitle:@"Sem ID de Circulares" text:@kReportIssue];
 			return;
 		}
@@ -5045,7 +5052,7 @@ you will still get a valid token for name "Funcionário".
 		NSURLResponse *response;
 		NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
 		if (data == nil) {
-                        NSLog(@"err intern");
+			NSLog(@"err intern");
 			[self displayFailViewWithTitle:@"Falha ao carregar a página" text:@"Cheque sua conexão de Internet."];
 			return;
 		}
@@ -5062,21 +5069,21 @@ you will still get a valid token for name "Funcionário".
 		
 		int blen = base64_decode([value UTF8String], [value length], &str);
 		if (blen < 0) {
-                        [self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: base64_decode()" kReportIssue];
-                        [document release];
+			[self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: base64_decode()" kReportIssue];
+			[document release];
 			return;
 		}
 		
 		$viewState = parse_viewstate((unsigned char **)&str, true);
 		if ($viewState->stateType == kViewStateTypeError) {
 			NSLog(@"err vs");
-                        [self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: parse_viewstate()" kReportIssue];
-                        [document release];
+			[self displayFailViewWithTitle:@"Erro de Interpretação" text:@"Erro: parse_viewstate()" kReportIssue];
+			[document release];
 			return;
 		}
 		
 		$folder = $viewState->pair->first->pair->second->pair->second->arrayList[1]->pair->second->arrayList[5]->pair->first->array->array[1]->array->array[1]->array->array[1];
-                NSLog(@"$folder ptr %p", $folder);
+		NSLog(@"$folder ptr %p", $folder);
 		[document release];
 	}
         
@@ -5089,6 +5096,10 @@ you will still get a valid token for name "Funcionário".
         }];
 
 	NSLog(@"END RELOADDATA");	
+}
+
+- (BOOL)allowsRefresh {
+	return self == [[[self navigationController] viewControllers] objectAtIndex:0];
 }
 
 - (void)loadContentView {
@@ -5219,7 +5230,6 @@ you will still get a valid token for name "Funcionário".
 - (void)dealloc {
 	if ($viewState != NULL)
 		free_viewstate($viewState);
-	cleanup_viewstate_context();
 
 	[super dealloc];
 }
@@ -6261,6 +6271,7 @@ int main(int argc, char **argv) {
 	debug(@"Entering main()");
 
 	InitCache();
+	init_viewstate_context();	
 
 	NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 	
@@ -6271,7 +6282,8 @@ int main(int argc, char **argv) {
 	free(fname);
 
 	int ret = UIApplicationMain(argc, argv, nil, @"AppDelegate");
-    
+    	
+	cleanup_viewstate_context();
 	[pool drain];
 	return ret;
 }

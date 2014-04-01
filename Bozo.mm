@@ -963,6 +963,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (float)gradeInSupercontainer;
 - (float)$gradePercentage;
 
+- (BOOL)hasGrade;
+- (BOOL)hasAverage;
+
 @property(nonatomic, assign) NSInteger debugLevel;
 @end
 
@@ -1068,9 +1071,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @end
 
 @interface PhotoViewController : WebDataViewController <Service>
-@end
-
-@interface MoodleKeeperViewController : UIViewController <Service>
 @end
 
 @interface ServicesViewController : UITableViewController <UIAlertViewDelegate, UITextFieldDelegate> {
@@ -1849,6 +1849,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 // This whole thing, much like GradeContainer but a little worse, is completely undynamic.
 // But unlike GradeContainer, there isn't much to be done here.
 
+// URGENT FIXME: Add the click-on-grade-label feature to return to the original value.
 @implementation RecoveryTableViewCell
 @synthesize delegate, container, rightText, topText, bottomText;
 
@@ -3296,6 +3297,7 @@ you will still get a valid token for name "Funcionário".
 
 /* News Controller {{{ */
 
+// URGENT FIXME: Implement reload.
 @implementation NavigationWebBrowserController
 - (id)initWithQueue:(dispatch_queue_t)queue {
 	if ((self = [super init])) {
@@ -3306,16 +3308,30 @@ you will still get a valid token for name "Funcionário".
 	return self;
 }
 
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:@"Sem Título"];
+}
+
 - (void)webViewDidFinishLoad:(UIWebView *)webView {
 	// Perform JavaScript optimizations here.
 	if ([[[[webView request] URL] absoluteString] isEqualToString:@"http://arquivos.portoseguro.org.br/Emails/AconteceNoPorto/AconteceNoPorto.html"]) {
 		[self executeJavascript:@"document.getElementsByTagName('table')[0].setAttribute('style', 'position:absolute;top:0;bottom:0;left:0;right:0;width:100%;height:100%;border:1px;solid');"];
 		[self executeJavascript:@"document.getElementsByTagName('td')[1].setAttribute('align', 'center')"];
+
+		[self setTitle:@"Acontece No Porto"];
 	}
 	else if ([[[[webView request] URL] absoluteString] hasPrefix:@"http://arquivos.portoseguro.org.br/emails"]) {
 		[self executeJavascript:@"document.body.removeChild(document.getElementsByTagName('table')[0]);"];
 		[self executeJavascript:@"document.getElementsByTagName('table')[0].setAttribute('style', 'position:absolute;top:0;bottom:0;left:0;right:0;width:100%;height:100%;border:1px;solid');"];
+
+		[self setTitle:@"Acontece No Porto"];
 	}
+	else {
+		NSString *pageTitle = [self executeJavascript:@"document.title"];
+		if (!pageTitle || [pageTitle length]<1) pageTitle = @"Sem Título";
+		[self setTitle:pageTitle];
+	}		
 
 	[super webViewDidFinishLoad:webView];
 }
@@ -3355,6 +3371,11 @@ you will still get a valid token for name "Funcionário".
 	}
 
 	return self;
+}
+
+- (void)viewDidLoad {
+	[super viewDidLoad];
+	[self setTitle:@"Notícia"];
 }
 
 - (void)webViewDidFinishLoad:(UIWebView *)webView {
@@ -3405,7 +3426,6 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
-	// URGENT FIXME: Both here and on the other controller, set proper titles (article title when it's possible at least.)
 	if (navigationType == UIWebViewNavigationTypeLinkClicked) {
 		NSURL *url = [request URL];
 		if (![[url host] isEqualToString:@"www.portoseguro.org.br"] || [[url absoluteString] rangeOfString:@"noticia"].location == NSNotFound) {
@@ -3445,7 +3465,7 @@ you will still get a valid token for name "Funcionário".
 	return self;
 }
 
-// URGENT FIXME: The gray thing over the view when it's tapped should actually show up.
+// FIXME: The gray thing over the view when it's tapped should actually show up.
 - (void)drawContentView:(CGRect)rect highlighted:(BOOL)highlighted {
         CGContextRef context = UIGraphicsGetCurrentContext();
         CGContextSetTextMatrix(context, CGAffineTransformIdentity);
@@ -3745,8 +3765,8 @@ you will still get a valid token for name "Funcionário".
 	[copy setGrade:[[self grade] copy]];
 	[copy setValue:[[self value] copy]];
 	[copy setAverage:[[self average] copy]];
-	[copy setSubGradeContainers:[[NSArray alloc] initWithArray:[self subGradeContainers] copyItems:YES]];
-	[copy setSubBonusContainers:[[NSArray alloc] initWithArray:[self subBonusContainers] copyItems:YES]];
+	[copy setSubGradeContainers:[[NSMutableArray alloc] initWithArray:[self subGradeContainers] copyItems:YES]];
+	[copy setSubBonusContainers:[[NSMutableArray alloc] initWithArray:[self subBonusContainers] copyItems:YES]];
 	[copy setWeight:[self weight]];
 	[copy setDebugLevel:[self debugLevel]];
 	[copy setSuperContainer:[self superContainer]];
@@ -3864,6 +3884,14 @@ you will still get a valid token for name "Funcionário".
 	}
 }
 
+- (BOOL)hasGrade {
+	return ![[self grade] isEqualToString:@"$NoGrade"];
+}
+
+- (BOOL)hasAverage {
+	return ![[self average] isEqualToString:@"$NoGrade"];
+}
+
 /*- (void)release {
 	[super release];
         LOG_RELEASE(self);
@@ -3881,15 +3909,15 @@ you will still get a valid token for name "Funcionário".
 - (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
 	CGFloat zoneWidth2 = rect.size.width/4;
 	
-	NSString *gradeString__ = [[[self container] grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [[self container] grade];
+	NSString *gradeString__ = ![[self container] hasGrade] ? @"N/A" : [[self container] grade];
 	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
 	CFAttributedStringRef weightString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Peso\n" stringByAppendingString:[NSString stringWithFormat:@"%d", [[self container] weight]]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange weightContentRange = CFRangeMake(5, CFAttributedStringGetLength(weightString_)-5);
-	NSString *averageString__ = [[[self container] average] isEqualToString:@"$NoGrade"] ? @"N/A" : [[self container] average];
+	NSString *averageString__ = ![[self container] hasAverage] ? @"N/A" : [[self container] average];
 	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:averageString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange averageContentRange = CFRangeMake(5, CFAttributedStringGetLength(averageString_)-5);
-	NSString *totalString__ = [[[self container] grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]];
+	NSString *totalString__ = ![[self container] hasGrade] ? @"N/A" : [NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]];
 	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:totalString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
 	CFRange totalContentRange = CFRangeMake(5, CFAttributedStringGetLength(totalString_)-5);
 
@@ -4917,6 +4945,8 @@ you will still get a valid token for name "Funcionário".
 @implementation PapersViewController
 - (id)initWithIdentifier:(NSString *)identifier {
 	if ((self = [super initWithIdentifier:identifier])) {
+		init_viewstate_context();
+		
 		$viewState = NULL;
 		$folder = NULL;
 	}
@@ -5004,7 +5034,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-        return $folder == NULL ? 0 : $folder->array->length-1;
+        return $folder == NULL ? 0 : $folder->length-1;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -5117,8 +5147,10 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)dealloc {
-	/*if ($viewState != NULL)
-		free_viewstate($viewState);*/
+	if ($viewState != NULL)
+		free_viewstate($viewState);
+	cleanup_viewstate_context();
+
 	[super dealloc];
 }
 @end
@@ -5156,14 +5188,16 @@ you will still get a valid token for name "Funcionário".
 		}
 	}
 
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.turmadoaluno.portoseguro.org.br?token=%@", [sessionController gradeID]]];
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.turmadoaluno.portoseguro.org.br/Tarefas.aspx?token=%@", [sessionController gradeID]]];
 	NSURLResponse *response;
 	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+	NSLog(@"BODY: %@", [[document firstElementMatchingPath:@"/html/body"] content]);
 
 	NSString *year = [[document firstElementMatchingPath:@"/html/body//span[@id='lblAno']"] content];
 	NSString *clazz = [[document firstElementMatchingPath:@"/html/body//span[@id='lblTurma']"] content];
+	NSLog(@"clazz? %@ %@ %@", [document firstElementMatchingPath:@"/html/body//span[@id='lblTurma']"], [[document firstElementMatchingPath:@"/html/body//span[@id='lblTurma']"] tagName], clazz);
 	if (year == nil || clazz == nil) {
 		[self displayFailViewWithTitle:@"Erro de Interpretação." text:@"LblAno/LblTurma" kReportIssue];
 		
@@ -5592,16 +5626,6 @@ you will still get a valid token for name "Funcionário".
 
 /* }}} */
 
-/* Moodle {{{ */
-
-@implementation MoodleKeeperViewController
-- (NSString *)serviceName {
-	return @"Senha Moodle";
-}
-@end
-
-/* }}} */
-
 /* }}} */
 
 /* Services {{{ */
@@ -5624,19 +5648,16 @@ you will still get a valid token for name "Funcionário".
 	ClassViewController *classController = [[ClassViewController alloc] initWithIdentifier:@"classservice"];
 	ZeugnisViewController *zeugnisController = [[ZeugnisViewController alloc] initWithIdentifier:@"zeugnisservice"];
 	PhotoViewController *photoController = [[PhotoViewController alloc] initWithIdentifier:@"photoservice"];
-	MoodleKeeperViewController *moodleController = [[MoodleKeeperViewController alloc] init];
 
 	$controllers = [[NSArray alloc] initWithObjects:
 		classController,
 		zeugnisController,
 		photoController,
-		moodleController,
 		nil];
 	
 	[classController release];
 	[zeugnisController release];
 	[photoController release];
-	[moodleController release];
 }
 
 - (void)viewDidLoad {

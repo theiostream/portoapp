@@ -162,8 +162,8 @@ int read_type_format(unsigned char **viewState) {
 * viewState is the view state string
 * needsHeader defines whether we should check for file validity. */
 
-/* Log Pass debug {{{ */
 //#define LOG_PASS
+/* Log Pass debug {{{ */
 #ifdef LOG_PASS
 char tab[200];
 static int _i=0;
@@ -193,14 +193,6 @@ vsType *parse_viewstate(unsigned char **viewState, _Bool needsHeader) {
 			ret->stateType = kViewStateTypeError;
 			return ret;
 		}
-
-		// Initialize type map with standard view state types.
-		typeDescriptionMap = (char **)calloc(4, sizeof(char *));
-		typeDescriptionMap[kViewStateArrayTypeObject] = "System.Object";
-		typeDescriptionMap[kViewStateArrayTypeInt] = "System.Int32";
-		typeDescriptionMap[kViewStateArrayTypeString] = "System.String";
-		typeDescriptionMap[kViewStateArrayTypeBoolean] = "System.Boolean";
-		typeDescriptionMapIndex = kViewStateNumberOfDefaultTypes;
 	}
 	
 	switch (SHIFT_VIEWSTATE(viewState)) {
@@ -266,7 +258,7 @@ vsType *parse_viewstate(unsigned char **viewState, _Bool needsHeader) {
 			ret->array = (vsTypeArray *)malloc(sizeof(vsTypeArray));
 			ret->array->array = values;
 			ret->array->type = typ;
-			ret->array->length = len;
+			ret->length = len;
 			ret->stateType = kViewStateTypeArray;
 			break;
 		}
@@ -292,10 +284,10 @@ vsType *parse_viewstate(unsigned char **viewState, _Bool needsHeader) {
 			}
 			ETAB;
             
-            ret->array = (vsTypeArray *)malloc(sizeof(vsTypeArray));
+            		ret->array = (vsTypeArray *)malloc(sizeof(vsTypeArray));
 			ret->array->array = values;
 			ret->array->type = typ;
-			ret->array->length = len;
+			ret->length = len;
 			ret->stateType = kViewStateTypeArray;
 			break;
 	
@@ -321,6 +313,7 @@ vsType *parse_viewstate(unsigned char **viewState, _Bool needsHeader) {
 			ETAB;
 
 			ret->stringArray = strings;
+			ret->length = len;
 			ret->stateType = kViewStateTypeStringArray;
 			break;
 		}
@@ -338,6 +331,7 @@ vsType *parse_viewstate(unsigned char **viewState, _Bool needsHeader) {
 			ETAB;
 
 			ret->arrayList = list;
+			ret->length = len;
 			ret->stateType = kViewStateTypeArrayList;
 			break;
 		}
@@ -377,9 +371,11 @@ vsType *parse_viewstate(unsigned char **viewState, _Bool needsHeader) {
 			ret->stateType = kViewStateTypeTriplet;
 			break;
 		}
-
+		
+		// FIXME DOES NOT WORK. I think. Never tested, but I think there's gonna be a memory issue here.
 		case kViewStateHybridDictionary: {
 			int32_t len = read_viewstate_int(viewState);
+			ret->length = len;
 			ret->dictionary.kvPairs = (vsPair *)calloc(len, sizeof(vsPair));
 			
 			LOG("HYBRID DICTIONARY\n");
@@ -432,7 +428,10 @@ vsType *parse_viewstate(unsigned char **viewState, _Bool needsHeader) {
 		}
 
 		case kViewStateEmptyString: {
-			ret->string = "";
+			char *emptyString = calloc(1, sizeof(char));
+			emptyString[0] = '\0';
+			ret->string = emptyString;
+
 			ret->stateType = kViewStateTypeString;
 
 			LOG("STRING: <empty>\n");
@@ -479,6 +478,74 @@ vsType *parse_viewstate(unsigned char **viewState, _Bool needsHeader) {
 	return ret;
 }
 
+void free_viewstate(vsType *type) {
+	int i = 0;
+
+	fprintf(stderr, "Freeing %d\n", type->stateType);
+	switch (type->stateType) {
+		case kViewStateTypeString:
+			free(type->string);
+			break;
+		
+		case kViewStateTypeArray:
+			for (i=0; i < type->length; i++) {
+				free_viewstate(type->array->array[i]);
+			}
+			break;
+
+		case kViewStateTypeStringArray:
+			for (i=0; i < type->length; i++) {
+				free(type->stringArray[i]);
+			}
+			break;
+
+		case kViewStateTypeArrayList:
+			for (i=0; i < type->length; i++) {
+				free_viewstate(type->arrayList[i]);
+			}
+			break;
+			
+		case kViewStateTypePair:
+			free_viewstate(type->pair->first);
+			free_viewstate(type->pair->second);
+			free(type->pair);
+			break;
+
+		case kViewStateTypeTriplet:
+			free_viewstate(type->triplet->first);
+			free_viewstate(type->triplet->second);
+			free_viewstate(type->triplet->third);
+			free(type->triplet);
+			break;
+
+		default:
+			break;
+	}
+
+	free(type);
+}
+
+void init_viewstate_context() {
+	// Initialize type map with standard view state types.
+	typeDescriptionMap = (char **)calloc(4, sizeof(char *));
+	typeDescriptionMap[kViewStateArrayTypeObject] = "System.Object";
+	typeDescriptionMap[kViewStateArrayTypeInt] = "System.Int32";
+	typeDescriptionMap[kViewStateArrayTypeString] = "System.String";
+	typeDescriptionMap[kViewStateArrayTypeBoolean] = "System.Boolean";
+	typeDescriptionMapIndex = kViewStateNumberOfDefaultTypes;
+
+}
+
+void cleanup_viewstate_context() {
+	free(typeDescriptionMap);
+	
+	int i;
+	for (i=indexedStringCacheIndex-1; i >= 0; i--) {
+		free(indexedStringCache[i]);
+	}
+	free(indexedStringCache);
+}
+
 /*static char fcontent[1048576];
 int main(int argc, char **argv) {
 	FILE *f = fopen(argv[1], "r");
@@ -494,7 +561,13 @@ int main(int argc, char **argv) {
 	fclose(db);
 
 	printf("====== VIEW STATE PARSER by Daniel Ferreira; Public Domain. ======\n");
+	init_viewstate_context();
 	vsType *t = parse_viewstate((unsigned char **)&bozo, true);
+	cleanup_viewstate_context();
+
+	printf("======= FREEEEEEEE\n");
+	free_viewstate(t);
+	printf("FRREEEEEED\n");
 
 	return 0;
 }*/

@@ -23,7 +23,6 @@ typedef enum {
 
 typedef struct {
 	vsType **array;
-	unsigned int length;
 	unsigned int type;
 } vsTypeArray;
 
@@ -72,6 +71,7 @@ struct type_ {
 	};
 
 	vsStateType stateType;
+	unsigned int length;
 };
 
 #ifdef __cplusplus
@@ -86,6 +86,10 @@ int32_t read_viewstate_int(unsigned char **viewState);
 int read_type_format(unsigned char **viewState);
 
 vsType *parse_viewstate(unsigned char **viewState, _Bool needsHeader);
+void free_viewstate(vsType *type);
+
+void init_viewstate_context();
+void cleanup_viewstate_context();
 #ifdef __cplusplus
 }
 #endif

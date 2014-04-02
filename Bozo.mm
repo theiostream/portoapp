@@ -17,6 +17,7 @@
 // IMPLEMENT PRETTY SOON: Better handling of the fuckshit view controller view bounds thing
 // IMPLEMENT PRETTY SOON [23:42:13] <@DHowett> theiostream: the attributed strings and their CTFrameshit should be cached whenver possible. do not create a new attributed string every time the rect is drawn
 // IMPLEMENT PRETTY SOON: Push Notifications
+// IMPLEMENT PRETTY SOON: Learn NSURLSession (iOS7+, but regardless... we can do two branches for certain moment and afterwards implement compatibility measures.
 
 /* Credits {{{
 

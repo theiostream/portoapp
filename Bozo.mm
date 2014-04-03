@@ -498,6 +498,7 @@ static char *decode_derpcipher(const char *str) {
 
 #define kMissingGradesBacktraceStackTop @"notasParciaisWeb.NotasParciais.carregaPagina(String matricula) in D:\\Projetos\\Notas_Parciais\\notasParciaisWeb\\NotasParciais.aspx.cs:148"
 #define kNoGradesLabelText @"Nenhuma nota encontrada para o aluno"
+#define kNoZeugnisMessage @"O Boletim não pode ser visualizado no momento."
 
 #define kPortoRootURL @"http://www.portoseguro.org.br/"
 #define kPortoRootCircularesPage @"http://www.circulares.portoseguro.org.br/"
@@ -5400,6 +5401,7 @@ you will still get a valid token for name "Funcionário".
 	}
 	
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+	NSLog(@"BODY: %@", [[document firstElementMatchingPath:@"/html/body"] content]);
 	
 	$rootContainer = [[GradeContainer alloc] init];
 	[$rootContainer setDebugLevel:0];
@@ -5409,8 +5411,18 @@ you will still get a valid token for name "Funcionário".
 	[$rootContainer setWeight:1];
 
 	NSMutableArray *containers = [NSMutableArray array];
-
+	
 	NSArray *tableElements_ = [[document firstElementMatchingPath:@"/html/body//table[@id='gridBoletim']"] elementsMatchingPath:@"./tr"];
+	if ([tableElements_ count] == 1) {
+		if ([[[[tableElements_ objectAtIndex:0] firstElementMatchingPath:@"./td/h3"] content] isEqualToString:kNoZeugnisMessage])
+			[self displayFailViewWithTitle:@"Boletim Não Encontrado" text:@"Não há um boletim disponível para o ano selecionado."];
+		else
+			[self displayFailViewWithTitle:@"Erro de interpretação" text:@"Erro:XML:GridBoletim" @kReportIssue];
+		
+		[document release];
+		return;
+	}
+
 	// We remove the first two elements (table headers) and the last three (Ano Letivo/Dias Letivos, Observações, Information)
 	NSArray *tableElements = [tableElements_ subarrayWithRange:NSMakeRange(2, [tableElements_ count]-5)];
 	for (XMLElement *tr in tableElements) {

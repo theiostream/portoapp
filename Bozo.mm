@@ -5380,6 +5380,7 @@ you will still get a valid token for name "Funcionário".
 	[[self view] setBackgroundColor:[UIColor whiteColor]];
 }
 
+// FIXME: Implement showing frequency in the cell instead of an average N/A; aka stop being lazy and code a special Zeugnis SubjectView cell.
 - (void)reloadData {
 	SessionController *sessionController = [SessionController sharedInstance];
 	
@@ -5428,6 +5429,12 @@ you will still get a valid token for name "Funcionário".
 	for (XMLElement *tr in tableElements) {
 		NSArray *tdElements = [tr elementsMatchingPath:@"./td"];
 		NSString *subjectName = [[tdElements objectAtIndex:0] content];
+		if ([subjectName isEqualToString:@"EDUCAÇÃO FÍSICA"]) continue; // No grades.
+		
+		if ([subjectName hasPrefix:@"*"]) {
+			subjectName = [[subjectName substringFromIndex:1] substringToIndex:[subjectName length]-2];
+			subjectName = [subjectName stringByAppendingString:@" \ue50e"]; // \ue50e is meant to be a DE flag.
+		}
 		
 		NSString *firstGrade = [[[tdElements objectAtIndex:1] content] americanFloat];
 		NSString *secondGrade = [[[tdElements objectAtIndex:4] content] americanFloat];

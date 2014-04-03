@@ -2583,7 +2583,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	if ([method isEqualToString:@"POST"]) {
 		NSString *urlString = [url absoluteString];
 		NSArray *parts = [urlString componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"?"]];
-		NSLog(@"parts are %@ %@", [parts objectAtIndex:0], [parts objectAtIndex:1]);
+		NSLog(@"parts are %@ AND %@", [parts objectAtIndex:0], [parts objectAtIndex:1]);
 		[urlRequest setURL:[NSURL URLWithString:[parts objectAtIndex:0]]];
 		[urlRequest setHTTPBody:[[parts objectAtIndex:1] dataUsingEncoding:NSUTF8StringEncoding]];
 	}
@@ -5269,9 +5269,12 @@ you will still get a valid token for name "Funcionário".
 		}
 	}
 
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.turmadoaluno.portoseguro.org.br/Tarefas.aspx?token=%@", [sessionController gradeID]]];
-	NSURLResponse *response;
-	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.turmadoaluno.portoseguro.org.br/?token=%@", [sessionController gradeID]]];
+	NSHTTPURLResponse *response;
+	
+	// TODO: Find out why we can't pass the authentication cookies here.
+	NSURLRequest *r = [sessionController requestForPageWithURL:url method:@"POST" cookies:nil];
+	NSData *data = [NSURLConnection sendSynchronousRequest:r returningResponse:&response error:NULL];
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 	NSLog(@"BODY: %@", [[document firstElementMatchingPath:@"/html/body"] content]);

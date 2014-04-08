@@ -772,6 +772,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	UIBarButtonItem *$spinnerButton;
 
 	NSData *$cachedData;
+	NSString *$cacheIdentifier;
 }
 
 - (WebDataViewController *)initWithIdentifier:(NSString *)identifier;
@@ -1075,7 +1076,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	GradeContainer *$rootContainer;
 }
 
-- (id)initWithIdentifier:(NSString *)identifier postKeys:(NSDictionary *)dict cookies:(NSArray *)cookies;
+- (id)initWithIdentifier:(NSString *)identifier cacheIdentifier:(NSString *)cacheIdentifier postKeys:(NSDictionary *)dict cookies:(NSArray *)cookies;
 @end
 
 @interface ZeugnisViewController : WebDataViewController <Service, UITableViewDataSource, UITableViewDelegate> {
@@ -2858,7 +2859,11 @@ you will still get a valid token for name "Funcionário".
 	return [self initWithIdentifier:@"default"];
 }
 
-- (id)initWithIdentifier:(NSString *)identifier_ {
+- (id)initWithIdentifier:(NSString *)identifier {
+	return [self initWithIdentifier:identifier cacheIdentifier:@"0"];
+}
+
+- (id)initWithIdentifier:(NSString *)identifier_ cacheIdentifier:(NSString *)cacheIdentifier_ {
 	if ((self = [super init])) {
 		char *identifier;
 		asprintf(&identifier, "am.theiostre.portoapp.webdata.%s", [identifier_ UTF8String]);
@@ -2866,8 +2871,9 @@ you will still get a valid token for name "Funcionário".
 		$queue = dispatch_queue_create(identifier, NULL);
 		//dispatch_retain($queue);
 		free(identifier);
-
-		NSString *cacheFile = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingString:[NSString stringWithFormat:@"/%@-Cache.htmldata", NSStringFromClass([self class])]];		
+		
+		$cacheIdentifier = [cacheIdentifier_ retain];
+		NSString *cacheFile = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:[NSString stringWithFormat:@"%@-%@-Cache", NSStringFromClass([self class]), [self cacheIdentifier]]];		
 		$cachedData = [[NSData alloc] initWithContentsOfFile:cacheFile];
 	}
 
@@ -2882,6 +2888,10 @@ you will still get a valid token for name "Funcionário".
 	}
 
 	return bounds;
+}
+
+- (NSString *)cacheIdentifier {
+	return $cacheIdentifier;
 }
 
 - (void)loadView {
@@ -2902,7 +2912,7 @@ you will still get a valid token for name "Funcionário".
 	[$contentView setHidden:YES];
 	[[self view] addSubview:$contentView];
 
-	$cacheView = [[UIView alloc] initWithFrame:CGRectMake(0, [self contentViewFrame].origin.y, [[self view] bounds].size.width, 20)];
+	$cacheView = [[UIView alloc] initWithFrame:CGRectMake(0, [self contentViewFrame].origin.y-20, [[self view] bounds].size.width, 20)];
 	[$cacheView setHidden:YES];
 	[$cacheView setBackgroundColor:[UIColor yellowColor]];
 	[[self view] addSubview:$cacheView];
@@ -3055,9 +3065,12 @@ you will still get a valid token for name "Funcionário".
 	[$contentView release];
 }
 
+//#define ALWAYS_CACHE
 - (BOOL)shouldUseCachedData {
 	if (!$cachedData) return NO;
-	
+	#ifdef ALWAYS_CACHE
+	return YES;
+	#else	
 	SCNetworkReachabilityRef reachability = SCNetworkReachabilityCreateWithName(NULL, "www.educacional.com.br");
 	SCNetworkReachabilityFlags flags;
 	SCNetworkReachabilityGetFlags(reachability, &flags);
@@ -3082,6 +3095,7 @@ you will still get a valid token for name "Funcionário".
 	CFRelease(reachability);
 
 	return (status == ReachableViaWWAN && $cachedData) || status == NotReachable;
+	#endif
 }
 
 - (NSData *)cachedData {
@@ -3092,7 +3106,7 @@ you will still get a valid token for name "Funcionário".
 	if ($cachedData) [$cachedData release];
 	$cachedData = [data retain];
 
-	NSString *cacheFile = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingString:[NSString stringWithFormat:@"/%@-Cache", NSStringFromClass([self class])]];
+	NSString *cacheFile = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:[NSString stringWithFormat:@"%@-%@-Cache", NSStringFromClass([self class]), [self cacheIdentifier]]];
 	[$cachedData writeToFile:cacheFile atomically:YES];
 }
 
@@ -3100,6 +3114,7 @@ you will still get a valid token for name "Funcionário".
 	[self $freeViews];
 	[self freeData];
 	if ($cachedData) [$cachedData release];
+	[$cacheIdentifier release];
 	
 	dispatch_release($queue);
 
@@ -3444,7 +3459,6 @@ you will still get a valid token for name "Funcionário".
 
 /* News Controller {{{ */
 
-// URGENT FIXME: Implement reload.
 @implementation NavigationWebBrowserController
 - (id)initWithQueue:(dispatch_queue_t)queue {
 	if ((self = [super init])) {
@@ -3711,12 +3725,7 @@ you will still get a valid token for name "Funcionário".
 	//[super reloadData];
 	[$imageData removeAllObjects];
 
-	NSData *data;
-	IfNotCached {
-		data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
-	}
-	ElseNotCached(data);
-	
+	NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
 	if (data == nil) {
 		[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
 		return;
@@ -3791,7 +3800,6 @@ you will still get a valid token for name "Funcionário".
 	[$imageData addObject:more];
 	
 	[document release];
-	[self cacheData:data];
 
 	[self $performUIBlock:^{
 		UITableView *tableView = (UITableView *)[self contentView];
@@ -5345,36 +5353,43 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)reloadData {
-	SessionController *sessionController = [SessionController sharedInstance];
-	if (![sessionController gradeID]) {
-		[sessionController generateGradeID];
+	NSData *data;
+	IfNotCached {
+		SessionController *sessionController = [SessionController sharedInstance];
 		if (![sessionController gradeID]) {
-			[self displayFailViewWithTitle:@"Sem ID de Notas." text:@kReportIssue];
+			[sessionController generateGradeID];
+			if (![sessionController gradeID]) {
+				[self displayFailViewWithTitle:@"Sem ID de Notas." text:@kReportIssue];
+				return;
+			}
+		}
+
+		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.turmadoaluno.portoseguro.org.br/?token=%@", [sessionController gradeID]]];
+		NSHTTPURLResponse *response;
+		
+		// TODO: Find out why we can't pass the authentication cookies here.
+		NSURLRequest *r = [sessionController requestForPageWithURL:url method:@"POST" cookies:nil];
+		data = [NSURLConnection sendSynchronousRequest:r returningResponse:&response error:NULL];
+		if (data == nil) {
+			[self displayFailViewWithTitle:@"Erro de Conexão." text:@"Não pôde-se conectar ao servidor."];
 			return;
 		}
+		[self cacheData:data];
 	}
-
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.turmadoaluno.portoseguro.org.br/?token=%@", [sessionController gradeID]]];
-	NSHTTPURLResponse *response;
-	
-	// TODO: Find out why we can't pass the authentication cookies here.
-	NSURLRequest *r = [sessionController requestForPageWithURL:url method:@"POST" cookies:nil];
-	NSData *data = [NSURLConnection sendSynchronousRequest:r returningResponse:&response error:NULL];
+	ElseNotCached(data);
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-	NSLog(@"BODY: %@", [[document firstElementMatchingPath:@"/html/body"] content]);
 
 	NSString *year = [[document firstElementMatchingPath:@"/html/body//span[@id='lblAno']"] content];
 	NSString *clazz = [[document firstElementMatchingPath:@"/html/body//span[@id='lblTurma']"] content];
-	NSLog(@"clazz? %@ %@ %@", [document firstElementMatchingPath:@"/html/body//span[@id='lblTurma']"], [[document firstElementMatchingPath:@"/html/body//span[@id='lblTurma']"] tagName], clazz);
 	if (year == nil || clazz == nil) {
-		[self displayFailViewWithTitle:@"Erro de Interpretação." text:@"LblAno/LblTurma" kReportIssue];
+		[self displayFailViewWithTitle:@"Erro de Interpretação." text:@"Erro:LblAno/LblTurma" kReportIssue];
 		
 		[document release];
 		return;
 	}
 
-        [document release];
+	[document release];
 
 	[self $performUIBlock:^{
 		[$yearLabel setText:year];
@@ -5450,8 +5465,8 @@ you will still get a valid token for name "Funcionário".
 @end
 
 @implementation ZeugnisListViewController
-- (id)initWithIdentifier:(NSString *)identifier postKeys:(NSDictionary *)dict cookies:(NSArray *)cookies {
-	if ((self = [super initWithIdentifier:identifier])) {
+- (id)initWithIdentifier:(NSString *)identifier cacheIdentifier:(NSString *)cacheIdentifier postKeys:(NSDictionary *)dict cookies:(NSArray *)cookies {
+	if ((self = [super initWithIdentifier:identifier cacheIdentifier:cacheIdentifier])) {
 		$postKeys = [dict retain];
 		$cookies = [cookies retain];
 	}
@@ -5466,27 +5481,32 @@ you will still get a valid token for name "Funcionário".
 
 // FIXME: Implement showing frequency in the cell instead of an average N/A; aka stop being lazy and code a special Zeugnis SubjectView cell.
 - (void)reloadData {
-	SessionController *sessionController = [SessionController sharedInstance];
-	
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notastrimestrais.portoseguro.org.br/NotasTrimestrais.aspx?%@", NSDictionaryURLEncode($postKeys)]];
-	NSURLRequest *request = [sessionController requestForPageWithURL:url method:@"POST" cookies:$cookies];
-	
-	NSURLResponse *response;
-	NSData *data = [NSURLConnection sendSynchronousRequest:request returningResponse:&response error:NULL];
-	if (data == nil) {
-		[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
-		return;
+	NSData *data;
+	IfNotCached {
+		SessionController *sessionController = [SessionController sharedInstance];
+		
+		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notastrimestrais.portoseguro.org.br/NotasTrimestrais.aspx?%@", NSDictionaryURLEncode($postKeys)]];
+		NSURLRequest *request = [sessionController requestForPageWithURL:url method:@"POST" cookies:$cookies];
+		
+		NSURLResponse *response;
+		data = [NSURLConnection sendSynchronousRequest:request returningResponse:&response error:NULL];
+		if (data == nil) {
+			[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
+			return;
+		}
+		
+		NSURLRequest *boletimRequest = [sessionController requestForPageWithURL:[NSURL URLWithString:@"http://notastrimestrais.portoseguro.org.br/Boletim.aspx"] method:@"GET" cookies:$cookies];
+		data = [NSURLConnection sendSynchronousRequest:boletimRequest returningResponse:&response error:NULL];
+		if (data == nil) {
+			[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
+			return;
+		}
+		
+		[self cacheData:data];
 	}
-	
-	NSURLRequest *boletimRequest = [sessionController requestForPageWithURL:[NSURL URLWithString:@"http://notastrimestrais.portoseguro.org.br/Boletim.aspx"] method:@"GET" cookies:$cookies];
-	data = [NSURLConnection sendSynchronousRequest:boletimRequest returningResponse:&response error:NULL];
-	if (data == nil) {
-		[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
-		return;
-	}
+	ElseNotCached(data);
 	
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-	NSLog(@"BODY: %@", [[document firstElementMatchingPath:@"/html/body"] content]);
 	
 	$rootContainer = [[GradeContainer alloc] init];
 	[$rootContainer setDebugLevel:0];
@@ -5635,9 +5655,9 @@ you will still get a valid token for name "Funcionário".
 
 - (void)reloadData {
 	[$yearOptions removeAllObjects];
-	if ($cookies != nil) [$cookies release];
-	if ($viewState != nil) [$viewState release];
-	if ($eventValidation != nil) [$eventValidation release];
+	if ($cookies != nil) { [$cookies release]; $cookies = nil; }
+	if ($viewState != nil) { [$viewState release]; $viewState = nil; }
+	if ($eventValidation != nil) { [$eventValidation release]; $eventValidation = nil; }
 
 	SessionController *sessionController = [SessionController sharedInstance];
 	if (![sessionController gradeID]) {
@@ -5647,17 +5667,21 @@ you will still get a valid token for name "Funcionário".
 			return;
 		}
 	}
+	
+	NSData *data;
+	IfNotCached {
+		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notastrimestrais.portoseguro.org.br/NotasTrimestrais.aspx?token=%@", [sessionController gradeID]]];
+		NSHTTPURLResponse *response;
+		data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+		if (data == nil) {
+			[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
+			return;
+		}
+		[self cacheData:data];
 
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notastrimestrais.portoseguro.org.br/NotasTrimestrais.aspx?token=%@", [sessionController gradeID]]];
-	NSHTTPURLResponse *response;
-	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
-	if (data == nil) {
-		[self displayFailViewWithTitle:@"Erro de conexão." text:@"Não foi possível uma conexão à Internet."];
-		return;
+		$cookies = [[NSHTTPCookie cookiesWithResponseHeaderFields:[response allHeaderFields] forURL:[response URL]] retain];
 	}
-
-	$cookies = [[NSHTTPCookie cookiesWithResponseHeaderFields:[response allHeaderFields] forURL:[response URL]] retain];
-	NSLog(@"HI COOK %@", $cookies);
+	ElseNotCached(data);
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 	
@@ -5712,6 +5736,13 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	// This is here to avoid something like
+	// Loads cached boletim list, then shouldn't cache anymore, then cookies kept are nil, then won't be able to load the Boletim which won't be cached either.
+	if ($cookies == nil && ![self shouldUseCachedData]) {
+		AlertError(@"Não Há Cookies", @"Por favor recarregue a página.");
+		return;
+	}
+
 	Pair *yearValue_ = [$yearOptions objectAtIndex:[indexPath row]];
 	NSDictionary *dict = [NSDictionary dictionaryWithObjectsAndKeys:
 		yearValue_->obj2, @"ddlAno",
@@ -5721,7 +5752,7 @@ you will still get a valid token for name "Funcionário".
 		@"Visualizar", @"btVisualizar",
 		nil];
 
-	ZeugnisListViewController *listController = [[[ZeugnisListViewController alloc] initWithIdentifier:@"zeugnislist" postKeys:dict cookies:$cookies] autorelease];
+	ZeugnisListViewController *listController = [[[ZeugnisListViewController alloc] initWithIdentifier:@"zeugnislist" cacheIdentifier:yearValue_->obj2 postKeys:dict cookies:$cookies] autorelease];
 	[listController setTitle:yearValue_->obj1];
 	[[self navigationController] pushViewController:listController animated:YES];
 
@@ -5762,43 +5793,49 @@ you will still get a valid token for name "Funcionário".
 	//[super reloadData];
 	
 	[(UIImageView *)[[self contentView] viewWithTag:55] setImage:nil];
-
-	SessionController *sessionController = [SessionController sharedInstance];
-	if (![sessionController hasSession]) {
-		[self displayFailViewWithTitle:@"Sem autenticação" text:@"Realize o login no menu de Contas."];
-		return;
-	}
-	if (![sessionController gradeID]) {
-		[sessionController generateGradeID]; // it doesn't cost to try...
-		if (![sessionController gradeID]) {
-			[self displayFailViewWithTitle:@"Sem ID de Notas" text:@kReportIssue];
+	
+	NSData *imageData;
+	IfNotCached {
+		SessionController *sessionController = [SessionController sharedInstance];
+		if (![sessionController hasSession]) {
+			[self displayFailViewWithTitle:@"Sem autenticação" text:@"Realize o login no menu de Contas."];
 			return;
 		}
-	}
-	
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?token=%@", [sessionController gradeID]]];
-	NSURLResponse *response;
-	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
-	if (data == nil) {
-		[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
-		return;
-	}
-	
-	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-	XMLElement *imgTag = [document firstElementMatchingPath:@"//img[@id='ContentPlaceHolder1_imgFotoAluno']"];
-	
-	if (imgTag == nil) {
-		[self displayFailViewWithTitle:@"Falha de Interpretação." text:@"Erro: ImgElement" kReportIssue];
-		[document release];
-		return;
-	}
+		if (![sessionController gradeID]) {
+			[sessionController generateGradeID]; // it doesn't cost to try...
+			if (![sessionController gradeID]) {
+				[self displayFailViewWithTitle:@"Sem ID de Notas" text:@kReportIssue];
+				return;
+			}
+		}
+		
+		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?token=%@", [sessionController gradeID]]];
+		NSURLResponse *response;
+		NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+		if (data == nil) {
+			[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
+			return;
+		}
+		
+		XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+		XMLElement *imgTag = [document firstElementMatchingPath:@"//img[@id='ContentPlaceHolder1_imgFotoAluno']"];
+		
+		if (imgTag == nil) {
+			[self displayFailViewWithTitle:@"Falha de Interpretação." text:@"Erro: ImgElement" kReportIssue];
+			[document release];
+			return;
+		}
 
-	UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[@"http://notasparciais.portoseguro.org.br/" stringByAppendingString:[[imgTag attributes] objectForKey:@"src"]]]]];
-	[document release];
+		imageData = [NSData dataWithContentsOfURL:[NSURL URLWithString:[@"http://notasparciais.portoseguro.org.br/" stringByAppendingString:[[imgTag attributes] objectForKey:@"src"]]]];
+		[self cacheData:imageData];
+
+		[document release];
+	}
+	ElseNotCached(imageData);
 	
 	[self $performUIBlock:^{
 		UIImageView *imageView = (UIImageView *)[self contentView];
-		[imageView setImage:image];
+		[imageView setImage:[UIImage imageWithData:imageData]];
 
 		[self displayContentView];
 	}];

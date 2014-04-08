@@ -4636,7 +4636,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (GradesListViewController *)initWithYear:(NSString *)year period:(NSString *)period viewState:(NSString *)viewState eventValidation:(NSString *)eventValidation {
-	if ((self = [super initWithIdentifier:@"GradesListView"])) {
+	if ((self = [super initWithIdentifier:@"GradesListView" cacheIdentifier:[NSString stringWithFormat:@"%@_%@", year, period]])) {
 		$viewState = [viewState retain];
 		$eventValidation = [eventValidation retain];
 
@@ -4660,64 +4660,70 @@ you will still get a valid token for name "Funcionário".
 		[[$contentView subviews] makeObjectsPerformSelector:@selector(removeFromSuperview)];
 	}];
 
-	//#define READ_FROM_LOCAL_DEBUG_HTML
-	#ifdef READ_FROM_LOCAL_DEBUG_HTML
-	NSData *data = [NSData dataWithContentsOfFile:@"/Users/BobNelson/Documents/Projects/PortoApp/3rdp.html"];
-	#else
-	NSString *request = [[NSDictionary dictionaryWithObjectsAndKeys:
-		[sessionController gradeID], @"token",
-		$year, @"ctl00$ContentPlaceHolder1$ddlAno",
-		$period, @"ctl00$ContentPlaceHolder1$ddlEtapa",
-		@"Visualizar", @"ctl00$ContentPlaceHolder1$btnVoltarLista",
-		$viewState, @"__VIEWSTATE",
-		$eventValidation, @"__EVENTVALIDATION",
-		nil] urlEncodedString];
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?%@", request]];
-	
-	NSURLResponse *response;
-	NSError *error;
+	NSData *data;
+	IfNotCached {
+		//#define READ_FROM_LOCAL_DEBUG_HTML
+		#ifdef READ_FROM_LOCAL_DEBUG_HTML
+		NSData *data = [NSData dataWithContentsOfFile:@"/Users/BobNelson/Documents/Projects/PortoApp/3rdp.html"];
+		#else
+		NSString *request = [[NSDictionary dictionaryWithObjectsAndKeys:
+			[sessionController gradeID], @"token",
+			$year, @"ctl00$ContentPlaceHolder1$ddlAno",
+			$period, @"ctl00$ContentPlaceHolder1$ddlEtapa",
+			@"Visualizar", @"ctl00$ContentPlaceHolder1$btnVoltarLista",
+			$viewState, @"__VIEWSTATE",
+			$eventValidation, @"__EVENTVALIDATION",
+			nil] urlEncodedString];
+		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?%@", request]];
+		
+		NSURLResponse *response;
+		NSError *error;
 
-	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:&error];
-	if (data == nil) {
-		[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
-		return;
+		data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:&error];
+		if (data == nil) {
+			[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
+			return;
+		}
+
+		NSInteger statusCode = [(NSHTTPURLResponse *)response statusCode];
+		if (statusCode != 200) {
+			if (statusCode == 500) {
+				// The JavaScript handler for the 500 error tells me to contact the IT team.
+				// And it also redirects me to a login page which I CANNOT USE SINCE IT'S A WHOLE DIFFERENT LOGIN DOMAIN
+				// WHAT THE FUCK
+
+				// So they throw a 500 both for missing grades /and/ general-errors.
+				// It's up to us to determine which one of those it is.
+				// Let's hope a guess with the expected backtrace is good enough.
+
+				NSString *backtrace = [NSString stringWithUTF8String:(char *)[data bytes]];
+				if ([backtrace rangeOfString:kMissingGradesBacktraceStackTop].location != NSNotFound)
+					[self displayFailViewWithTitle:@"Notas Não Encontradas" text:@"O período selecionado não pôde ser encontrado.\n\n(Há uma chance de isto ser um erro HTTP 500. Neste caso, tente recarregar a página ou espere o site se recuperar do problema.)"];
+				else
+					[self displayFailViewWithTitle:@"Erro HTTP 500" text:@"Houve um erro de servidor." kServerError];
+			}
+			else if (statusCode == 12030) {
+				[self displayFailViewWithTitle:@"Erro HTTP 12030" text:@"A conexão com o servidor foi abortada (e o Porto está preparado para isso com um alerta na página de Notas!)." kServerError];
+			}
+			else {
+				[self displayFailViewWithTitle:[NSString stringWithFormat:@"Erro HTTP %d", statusCode] text:@"Houve um erro de servidor desconhecido." kServerError];
+			}
+
+			return;
+		}
+		#endif
+
+		// i used this because 3rd period of 2013 was going to be concluded
+		// so i still needed to test this on an incomplete period.
+		// so i saved this html file. i know it's a horrible test with few cases, but i'll be creative etc.
+		//#define SAVE_GRADE_HTML
+		#ifdef SAVE_GRADE_HTML
+		[data writeToFile:@"/Users/BobNelson/Documents/Projects/PortoApp/datak.html" atomically:NO];
+		#endif
+
+		[self cacheData:data];
 	}
-
-	NSInteger statusCode = [(NSHTTPURLResponse *)response statusCode];
-	if (statusCode != 200) {
-		if (statusCode == 500) {
-			// The JavaScript handler for the 500 error tells me to contact the IT team.
-			// And it also redirects me to a login page which I CANNOT USE SINCE IT'S A WHOLE DIFFERENT LOGIN DOMAIN
-			// WHAT THE FUCK
-
-			// So they throw a 500 both for missing grades /and/ general-errors.
-			// It's up to us to determine which one of those it is.
-			// Let's hope a guess with the expected backtrace is good enough.
-
-			NSString *backtrace = [NSString stringWithUTF8String:(char *)[data bytes]];
-			if ([backtrace rangeOfString:kMissingGradesBacktraceStackTop].location != NSNotFound)
-				[self displayFailViewWithTitle:@"Notas Não Encontradas" text:@"O período selecionado não pôde ser encontrado.\n\n(Há uma chance de isto ser um erro HTTP 500. Neste caso, tente recarregar a página ou espere o site se recuperar do problema.)"];
-			else
-				[self displayFailViewWithTitle:@"Erro HTTP 500" text:@"Houve um erro de servidor." kServerError];
-		}
-		else if (statusCode == 12030) {
-			[self displayFailViewWithTitle:@"Erro HTTP 12030" text:@"A conexão com o servidor foi abortada (e o Porto está preparado para isso com um alerta na página de Notas!)." kServerError];
-		}
-		else {
-			[self displayFailViewWithTitle:[NSString stringWithFormat:@"Erro HTTP %d", statusCode] text:@"Houve um erro de servidor desconhecido." kServerError];
-		}
-
-		return;
-	}
-	#endif
-
-	// i used this because 3rd period of 2013 was going to be concluded
-	// so i still needed to test this on an incomplete period.
-	// so i saved this html file. i know it's a horrible test with few cases, but i'll be creative etc.
-	//#define SAVE_GRADE_HTML
-	#ifdef SAVE_GRADE_HTML
-	[data writeToFile:@"/Users/BobNelson/Documents/Projects/PortoApp/datak.html" atomically:NO];
-	#endif
+	ElseNotCached(data);
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
         NSLog(@"%@", [[document firstElementMatchingPath:@"/html/body"] content]);
@@ -4951,34 +4957,39 @@ you will still get a valid token for name "Funcionário".
 	[$yearOptions removeAllObjects];
 	[$periodOptions removeAllObjects];
 
-	SessionController *sessionController = [SessionController sharedInstance];
-	if (![sessionController hasSession]) {
-		[self displayFailViewWithTitle:@"Sem autenticação" text:@"Realize o login no menu de Contas."];
-		return;
-	}
-	if (![sessionController gradeID]) {
-		[sessionController generateGradeID]; // it doesn't cost to try...
-		if (![sessionController gradeID]) {
-			[self displayFailViewWithTitle:@"Sem ID de Notas" text:@kReportIssue];
+	NSData *data;
+	IfNotCached {
+		SessionController *sessionController = [SessionController sharedInstance];
+		if (![sessionController hasSession]) {
+			[self displayFailViewWithTitle:@"Sem autenticação" text:@"Realize o login no menu de Contas."];
 			return;
 		}
-	}
-	
-	if ($viewState != nil) [$viewState release];
-	if ($eventValidation != nil) [$eventValidation release];
-	$viewState = nil;
-	$eventValidation = nil;
+		if (![sessionController gradeID]) {
+			[sessionController generateGradeID]; // it doesn't cost to try...
+			if (![sessionController gradeID]) {
+				[self displayFailViewWithTitle:@"Sem ID de Notas" text:@kReportIssue];
+				return;
+			}
+		}
+		
+		if ($viewState != nil) [$viewState release];
+		if ($eventValidation != nil) [$eventValidation release];
+		$viewState = nil;
+		$eventValidation = nil;
 
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?token=%@", [sessionController gradeID]]];
-	NSURLResponse *response;
-	NSData *data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
-	if (data == nil) {
-		[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
-		return;
+		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?token=%@", [sessionController gradeID]]];
+		NSURLResponse *response;
+		data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+		if (data == nil) {
+			[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
+			return;
+		}
+
+		[self cacheData:data];
 	}
+	ElseNotCached(data);
 	
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-        NSLog(@"BODY 1234: %@", [[document firstElementMatchingPath:@"/html/body"] content]);
 	NSArray *hiddenInputs = [document elementsMatchingPath:@"/html/body/form[@id='form1']/input[@type='hidden']"];
 	for (XMLElement *input in hiddenInputs) {
 		NSDictionary *attributes = [input attributes];

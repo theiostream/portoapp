@@ -497,7 +497,7 @@ static char *decode_derpcipher(const char *str) {
 #define kServerError "\n\nTente recarregar a página ou espere o site se recuperar de algum problema."
 
 #define kMissingGradesBacktraceStackTop @"notasParciaisWeb.NotasParciais.carregaPagina(String matricula) in D:\\Projetos\\Notas_Parciais\\notasParciaisWeb\\NotasParciais.aspx.cs:148"
-#define kNoGradesLabelText @"Nenhuma nota encontrada para o aluno"
+#define kNoGradesLabelText @"Nenhuma avaliação ou nota encontrada para o aluno"
 #define kNoZeugnisMessage @"O Boletim não pode ser visualizado no momento."
 
 #define kPortoRootURL @"http://www.portoseguro.org.br/"
@@ -766,12 +766,16 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	LoadingIndicatorView *$loadingView;
 	FailView *$failureView;
 	UIView *$contentView;
+	UIView *$cacheView;
 
 	UIBarButtonItem *$refreshButton;
 	UIBarButtonItem *$spinnerButton;
+
+	NSData *$cachedData;
 }
 
 - (WebDataViewController *)initWithIdentifier:(NSString *)identifier;
+- (CGRect)contentViewFrame;
 
 - (UIView *)contentView;
 - (void)loadContentView;
@@ -789,7 +793,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)displayContentView;
 
 - (void)$performUIBlock:(void(^)())block;
+
+- (BOOL)shouldUseCachedData;
+- (NSData *)cachedData;
+- (void)cacheData:(NSData *)data;
 @end
+#define IfNotCached { if(![self shouldUseCachedData])
+#define ElseNotCached(x) else{ x = [self cachedData]; } }
 
 /* }}} */
 
@@ -2856,9 +2866,22 @@ you will still get a valid token for name "Funcionário".
 		$queue = dispatch_queue_create(identifier, NULL);
 		//dispatch_retain($queue);
 		free(identifier);
+
+		NSString *cacheFile = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingString:[NSString stringWithFormat:@"/%@-Cache.htmldata", NSStringFromClass([self class])]];		
+		$cachedData = [[NSData alloc] initWithContentsOfFile:cacheFile];
 	}
 
 	return self;
+}
+
+- (CGRect)contentViewFrame {
+	CGRect bounds = FixViewBounds([[self view] bounds]);
+	if ([self shouldUseCachedData]) {
+		bounds.origin.y += 20;
+		bounds.size.height -= 20;
+	}
+
+	return bounds;
 }
 
 - (void)loadView {
@@ -2878,6 +2901,11 @@ you will still get a valid token for name "Funcionário".
 	[self loadContentView];
 	[$contentView setHidden:YES];
 	[[self view] addSubview:$contentView];
+
+	$cacheView = [[UIView alloc] initWithFrame:CGRectMake(0, [self contentViewFrame].origin.y, [[self view] bounds].size.width, 20)];
+	[$cacheView setHidden:YES];
+	[$cacheView setBackgroundColor:[UIColor yellowColor]];
+	[[self view] addSubview:$cacheView];
 }
 
 - (void)didReceiveMemoryWarning {
@@ -2970,6 +2998,7 @@ you will still get a valid token for name "Funcionário".
 - (void)hideContentView {
 	[self $performUIBlock:^{
 		[$contentView setHidden:YES];
+		[$cacheView setHidden:YES];
 	}];
 }
 
@@ -2993,6 +3022,8 @@ you will still get a valid token for name "Funcionário".
 		NSLog(@"we just set $contentView.hidden to NO!");
 		[$contentView setHidden:NO];
 		NSLog(@"eh? %d", [$contentView isHidden]);
+
+		[$cacheView setHidden:![self shouldUseCachedData]];
 	}];
 }
 
@@ -3005,7 +3036,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)loadContentView {
-	$contentView = [[UIView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
+	$contentView = [[UIView alloc] initWithFrame:[self contentViewFrame]];
 }
 
 - (void)unloadContentView {
@@ -3018,14 +3049,57 @@ you will still get a valid token for name "Funcionário".
 
 	[$loadingView release];
 	[$failureView release];
+	[$cacheView release];
 	
 	[self unloadContentView];
 	[$contentView release];
 }
 
+- (BOOL)shouldUseCachedData {
+	if (!$cachedData) return NO;
+	
+	SCNetworkReachabilityRef reachability = SCNetworkReachabilityCreateWithName(NULL, "www.educacional.com.br");
+	SCNetworkReachabilityFlags flags;
+	SCNetworkReachabilityGetFlags(reachability, &flags);
+
+	NetworkStatus status = NotReachable;
+	if ((flags & kSCNetworkReachabilityFlagsReachable) != 0) {
+		if ((flags & kSCNetworkReachabilityFlagsConnectionRequired) == 0) {
+			status = ReachableViaWiFi;
+		}
+		
+		if ((((flags & kSCNetworkReachabilityFlagsConnectionOnDemand) != 0) ||
+		      (flags & kSCNetworkReachabilityFlagsConnectionOnTraffic) != 0)) {
+			if ((flags & kSCNetworkReachabilityFlagsInterventionRequired) == 0) {
+				status = ReachableViaWiFi;
+			}
+		}
+
+		if ((flags & kSCNetworkReachabilityFlagsIsWWAN) == kSCNetworkReachabilityFlagsIsWWAN) {
+			status = ReachableViaWWAN;
+		}
+	}
+	CFRelease(reachability);
+
+	return (status == ReachableViaWWAN && $cachedData) || status == NotReachable;
+}
+
+- (NSData *)cachedData {
+	return $cachedData;
+}
+
+- (void)cacheData:(NSData *)data {
+	if ($cachedData) [$cachedData release];
+	$cachedData = [data retain];
+
+	NSString *cacheFile = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingString:[NSString stringWithFormat:@"/%@-Cache", NSStringFromClass([self class])]];
+	[$cachedData writeToFile:cacheFile atomically:YES];
+}
+
 - (void)dealloc {
 	[self $freeViews];
 	[self freeData];
+	if ($cachedData) [$cachedData release];
 	
 	dispatch_release($queue);
 
@@ -3620,7 +3694,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)loadContentView {
-	UITableView *tableView = [[UITableView alloc] initWithFrame:FixViewBounds([[self view] bounds]) style:UITableViewStylePlain];
+	UITableView *tableView = [[UITableView alloc] initWithFrame:[self contentViewFrame] style:UITableViewStylePlain];
 	[tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
 	[tableView setDelegate:self];
 	[tableView setDataSource:self];
@@ -3637,7 +3711,12 @@ you will still get a valid token for name "Funcionário".
 	//[super reloadData];
 	[$imageData removeAllObjects];
 
-	NSData *data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
+	NSData *data;
+	IfNotCached {
+		data = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"http://www.portoseguro.org.br"]];
+	}
+	ElseNotCached(data);
+	
 	if (data == nil) {
 		[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
 		return;
@@ -3712,6 +3791,7 @@ you will still get a valid token for name "Funcionário".
 	[$imageData addObject:more];
 	
 	[document release];
+	[self cacheData:data];
 
 	[self $performUIBlock:^{
 		UITableView *tableView = (UITableView *)[self contentView];
@@ -4632,8 +4712,11 @@ you will still get a valid token for name "Funcionário".
 	#endif
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-	XMLElement *divGeral = [document firstElementMatchingPath:@"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']"];
-	if ([[[divGeral firstElementMatchingPath:@"./span[@id='ContentPlaceHolder1_lblMsg']"] content] isEqualToString:kNoGradesLabelText]) {
+        NSLog(@"%@", [[document firstElementMatchingPath:@"/html/body"] content]);
+        
+	XMLElement *divGeral = [document firstElementMatchingPath:@"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']"];
+	//if ([[[divGeral firstElementMatchingPath:@"./span[@id='ContentPlaceHolder1_lblMsg']"] content] isEqualToString:kNoGradesLabelText]) {
+        if ([divGeral firstElementMatchingPath:@"./span[@id='ContentPlaceHolder1_lblMsg']"]) {
 		[self displayFailViewWithTitle:@"Notas Não Encontradas" text:@"O período selecionado não pôde ser encontrado."];
 
 		[document release];
@@ -4799,7 +4882,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)loadContentView {
-	NoButtonDelayScrollView *scrollView = [[NoButtonDelayScrollView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
+	NoButtonDelayScrollView *scrollView = [[NoButtonDelayScrollView alloc] initWithFrame:[self contentViewFrame]];
 	[scrollView setBackgroundColor:[UIColor whiteColor]];
 	[scrollView setScrollsToTop:NO];
 	[scrollView setPagingEnabled:YES];
@@ -4887,6 +4970,7 @@ you will still get a valid token for name "Funcionário".
 	}
 	
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
+        NSLog(@"BODY 1234: %@", [[document firstElementMatchingPath:@"/html/body"] content]);
 	NSArray *hiddenInputs = [document elementsMatchingPath:@"/html/body/form[@id='form1']/input[@type='hidden']"];
 	for (XMLElement *input in hiddenInputs) {
 		NSDictionary *attributes = [input attributes];
@@ -4902,7 +4986,7 @@ you will still get a valid token for name "Funcionário".
 		return;
 	}
 	
-	NSString *m3tPath = @"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']/div[@class='container']/div[@class='m3t']";
+	NSString *m3tPath = @"/html/body/form[@id='form1']/div[@class='page ui-corner-bottom']/div[@class='body']/div[@id='updtPnl1']/div[@id='ContentPlaceHolder1_divGeral']/div[@class='container']/div[@class='fleft']/div[@class='m3t']";
 	XMLElement *yearSelect = [document firstElementMatchingPath:[m3tPath stringByAppendingString:@"/select[@name='ctl00$ContentPlaceHolder1$ddlAno']"]];
 	XMLElement *periodSelect = [document firstElementMatchingPath:[m3tPath stringByAppendingString:@"/select[@name='ctl00$ContentPlaceHolder1$ddlEtapa']"]];
 	
@@ -4947,7 +5031,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)loadContentView {
-	UITableView *tableView = [[UITableView alloc] initWithFrame:FixViewBounds([[self view] bounds]) style:UITableViewStylePlain];
+	UITableView *tableView = [[UITableView alloc] initWithFrame:[self contentViewFrame] style:UITableViewStylePlain];
 	[tableView setDelegate:self];
 	[tableView setDataSource:self];
 
@@ -5105,7 +5189,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)loadContentView {
-	UITableView *tableView = [[UITableView alloc] initWithFrame:FixViewBounds([[self view] bounds]) style:UITableViewStylePlain];
+	UITableView *tableView = [[UITableView alloc] initWithFrame:[self contentViewFrame] style:UITableViewStylePlain];
 	[tableView setDelegate:self];
 	[tableView setDataSource:self];
 
@@ -5490,7 +5574,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)loadContentView {
-	NoButtonDelayScrollView *scrollView = [[NoButtonDelayScrollView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
+	NoButtonDelayScrollView *scrollView = [[NoButtonDelayScrollView alloc] initWithFrame:[self contentViewFrame]];
 	[scrollView setBackgroundColor:[UIColor whiteColor]];
 	[scrollView setScrollsToTop:NO];
 	[scrollView setPagingEnabled:YES];
@@ -5598,7 +5682,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)loadContentView {
-	UITableView *tableView = [[UITableView alloc] initWithFrame:FixViewBounds([[self view] bounds]) style:UITableViewStylePlain];
+	UITableView *tableView = [[UITableView alloc] initWithFrame:[self contentViewFrame] style:UITableViewStylePlain];
 	[tableView setDataSource:self];
 	[tableView setDelegate:self];
 
@@ -5721,7 +5805,7 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)loadContentView {
-	UIImageView *imageView = [[UIImageView alloc] initWithFrame:FixViewBounds([[self view] bounds])];
+	UIImageView *imageView = [[UIImageView alloc] initWithFrame:[self contentViewFrame]];
 
 	$contentView = imageView;
 }

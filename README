@@ -15,7 +15,6 @@ UPDATE AS OF 26/1/2013
 See history/JAN_2013.txt
 
 As of now, that this app is feature-complete, there are three things to be done:
-1. Implement NSURLRequest caching so that we can get the old loaded data if we're offline or on 3G (show something like FBMessenger!);
 2. Fix URGENT FIXMEs, FIXMEs and TODOs (in decreasing order of importance).
 3. Attempt to:
    a) Convince Porto to talk to Apple's push notification system for God's sake so we can get new grade notifications

@@ -2914,7 +2914,14 @@ you will still get a valid token for name "Funcionário".
 
 	$cacheView = [[UIView alloc] initWithFrame:CGRectMake(0, [self contentViewFrame].origin.y-20, [[self view] bounds].size.width, 20)];
 	[$cacheView setHidden:YES];
-	[$cacheView setBackgroundColor:[UIColor yellowColor]];
+	
+	UILabel *cachedLabel = [[UILabel alloc] initWithFrame:[$cacheView bounds]];
+	[cachedLabel setText:@"Página Não Atualizada"];
+	[cachedLabel setFont:[UIFont systemFontOfSize:pxtopt(20.f)]];
+	[cachedLabel setTextColor:[UIColor blackColor]];
+	[cachedLabel setBackgroundColor:[UIColor clearColor]];
+	[cachedLabel setTextAlignment:NSTextAlignmentCenter];
+	[$cacheView addSubview:cachedLabel];
 	[[self view] addSubview:$cacheView];
 }
 
@@ -3034,6 +3041,8 @@ you will still get a valid token for name "Funcionário".
 		NSLog(@"eh? %d", [$contentView isHidden]);
 
 		[$cacheView setHidden:![self shouldUseCachedData]];
+		[$cacheView setFrame:CGRectMake(0, [self contentViewFrame].origin.y-20, [[self view] bounds].size.width, 20)];
+		[$contentView setFrame:[self contentViewFrame]];
 	}];
 }
 

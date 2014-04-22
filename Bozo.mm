@@ -653,11 +653,15 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @class PieChartView;
 
 // i don't like iOS 7
-@interface PickerActionSheet : UIView {
-	PieChartView *$pieChartView;
+@interface PickerActionSheet : UIView <UIPickerViewDelegate, UIPickerViewDataSource> {
 	UILabel *$subtitleLabel;
+	
+	NSInteger *$rowMap;
+	NSInteger $selectedContainerType;
 }
-- (id)initWithHeight:(CGFloat)height pieChartView:(PieChartView *)pieChartView;
+@property(nonatomic, assign) PieChartView *delegate;
+
+- (id)initWithHeight:(CGFloat)height;
 - (void)display;
 - (void)dismiss;
 - (void)setSubtitleLabelText:(NSString *)text;
@@ -701,7 +705,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @end
 
 @protocol PieChartViewDelegate;
-@interface PieChartView : UIView <PieChartSliderViewDelegate, UIPickerViewDelegate, UIPickerViewDataSource> {
+@interface PieChartView : UIView <PieChartSliderViewDelegate> {
 	PieChartPiece *$emptyPiece;
 	NSMutableArray *$pieces;
 	CGFloat $radius;
@@ -709,14 +713,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	NSInteger $percentageSum;
 	
 	UIButton *$addGradeButton;
-	PickerActionSheet *$pickerSheet;
-	NSInteger *$rowMap;
-	NSInteger $selectedContainerType;
 }
 @property(nonatomic, assign) id<PieChartViewDelegate> delegate;
 + (CGFloat)extraHeight;
 - (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count radius:(CGFloat)radius emptyPiece:(PieChartPiece *)empty;
 - (void)updateBonusSliders;
+- (void)didClosePickerSheet:(PickerActionSheet *)$pickerSheet withRowMap:(NSInteger *)$rowMap selectedContainerType:(NSInteger)$selectedContainerType;
 @end
 
 @protocol PieChartViewDelegate <NSObject>
@@ -1299,18 +1301,21 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 // FIXME: Don't have repeated views. Maybe reuse at least the PickerActionSheet?
 #define kPickerActionSheetSpaceAboveBottom 5.f
 @implementation PickerActionSheet
-- (id)initWithHeight:(CGFloat)height pieChartView:(PieChartView *)pieChartView {
+@synthesize delegate;
+
+- (id)initWithHeight:(CGFloat)height {
         UIWindow *keyWindow = [[UIApplication sharedApplication] keyWindow];
         if ((self = [super initWithFrame:CGRectMake(5.f, [keyWindow bounds].size.height, [keyWindow bounds].size.width - 10.f, height)])) {
-		$pieChartView = pieChartView;
+		$rowMap = (NSInteger *)calloc(2, sizeof(NSInteger));
+		$selectedContainerType = 0;
 
 		[self setBackgroundColor:[UIColor whiteColor]];
 		[[self layer] setMasksToBounds:NO];
 		[[self layer] setCornerRadius:8];
 
 		UIPickerView *pickerView = [[UIPickerView alloc] initWithFrame:CGRectMake(0.f, HEIGHT_OF_NAVBAR, [self bounds].size.width, height - HEIGHT_OF_NAVBAR)];
-		[pickerView setDelegate:pieChartView];
-		[pickerView setDataSource:pieChartView];
+		[pickerView setDelegate:self];
+		[pickerView setDataSource:self];
 		[pickerView setShowsSelectionIndicator:YES];
 		[pickerView setTag:55];
 		[self addSubview:pickerView];
@@ -1338,7 +1343,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[doneButton setSegmentedControlStyle:UISegmentedControlStyleBar];
 		[doneButton setTintColor:[UIColor blackColor]];
 		[doneButton setFrame:CGRectMake([self bounds].size.width - 55.f, 7.f, 50.f, 30.f)]; // FIXME?
-		[doneButton addTarget:pieChartView action:@selector(doneWithPickerView:) forControlEvents:UIControlEventValueChanged];
+		[doneButton addTarget:self action:@selector(doneWithPickerView:) forControlEvents:UIControlEventValueChanged];
 		[self addSubview:doneButton];
 		[doneButton release];
 
@@ -1350,8 +1355,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[cancelButton addTarget:self action:@selector($dismiss:) forControlEvents:UIControlEventValueChanged];
 		[self addSubview:cancelButton];
 		[cancelButton release];
-
-		[keyWindow addSubview:self];
 	}
 
 	return self;
@@ -1362,9 +1365,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)display {
-	UIView *subjectView = $pieChartView;
-	while (![subjectView isKindOfClass:[GradesSubjectView class]]) subjectView = [subjectView superview];
-	[subjectView setUserInteractionEnabled:NO];
+	[[[UIApplication sharedApplication] keyWindow] addSubview:self];
 
 	UIView *endarkenView = [[UIView alloc] initWithFrame:[[[UIApplication sharedApplication] keyWindow] bounds]];
 	[endarkenView setBackgroundColor:[UIColor blackColor]];
@@ -1382,10 +1383,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (void)$dismiss:(id)sender { [self dismiss]; }
 - (void)dismiss {
-	UIView *subjectView = $pieChartView;
-	while (![subjectView isKindOfClass:[GradesSubjectView class]]) subjectView = [subjectView superview];
-	[subjectView setUserInteractionEnabled:YES];
-	
 	UIView *endarkenView = [[[UIApplication sharedApplication] keyWindow] viewWithTag:66];
 	
 	[UIView animateWithDuration:.5f animations:^{
@@ -1394,11 +1391,54 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	} completion:^(BOOL finished){
 		[endarkenView removeFromSuperview];
 	}];
+
+	[self removeFromSuperview];
 }
 
 - (void)dealloc {
 	[$subtitleLabel release];
+	free($rowMap);
+
 	[super dealloc];
+}
+
+- (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)pickerView {
+	return 2;
+}
+
+- (NSInteger)pickerView:(UIPickerView *)pickerView numberOfRowsInComponent:(NSInteger)component {
+	return component==0 ? 2 : ($selectedContainerType == 0 ? 10 : 100);
+}
+
+- (CGFloat)pickerView:(UIPickerView *)pickerView rowHeightForComponent:(NSInteger)component {
+	return 44.f;
+}
+
+- (CGFloat)pickerView:(UIPickerView *)pickerView widthForComponent:(NSInteger)component {
+	return [pickerView bounds].size.width/2;
+}
+
+- (NSString *)pickerView:(UIPickerView *)pickerView titleForRow:(NSInteger)row forComponent:(NSInteger)component {
+	if (component == 0) {
+		return row==0 ? @"Nota" : @"Bônus";
+	}
+
+	if ($selectedContainerType == 0) return [NSString stringWithFormat:@"%d", row + 1];
+	return [NSString stringWithFormat:@"%.2f", (float)((row + 1)/10.f)];
+}
+
+- (void)pickerView:(UIPickerView *)pickerView didSelectRow:(NSInteger)row inComponent:(NSInteger)component {
+	if (component == 0) {
+		$selectedContainerType = row;
+		[pickerView reloadComponent:1];
+
+		[self setSubtitleLabelText:[@"Selecione o " stringByAppendingString:row==0 ? @"peso." : @"valor."]];
+	}
+	else $rowMap[$selectedContainerType] = row;
+}
+
+- (void)doneWithPickerView:(UISegmentedControl *)sender {
+	[[self delegate] didClosePickerSheet:self withRowMap:$rowMap selectedContainerType:$selectedContainerType];
 }
 @end
 
@@ -1544,8 +1584,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		$pieces = [pieces mutableCopy];
 		$emptyPiece = [empty retain];
 		$radius = radius;
-		$rowMap = (NSInteger *)calloc(2, sizeof(NSInteger));
-		$selectedContainerType = 0;
+		
 		
 		NSLog(@"INITIALIZING VIEW");
 		CGFloat totalAngle = 0.f;
@@ -1619,14 +1658,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		$addGradeButton = [[UIButton buttonWithType:UIButtonTypeCustom] retain];
 		[$addGradeButton setFrame:CGRectMake(kPieChartViewInset*3 + $radius*2, pieChartSliderOrigin + 2.f, ([self bounds].size.width - (kPieChartViewInset*3 + $radius*2)), [[self class] extraHeight])];
 		[[$addGradeButton titleLabel] setFont:[UIFont systemFontOfSize:pxtopt([[self class] extraHeight])]];
+		if (!SYSTEM_VERSION_GT_EQ(@"7.0")) [[$addGradeButton titleLabel] setTextColor:UIColorFromHexWithAlpha(0x63B8FF, 1.f)];
 		[$addGradeButton setTitle:@"Adicionar Nota" forState:UIControlStateNormal];
 		[$addGradeButton setBackgroundColor:[UIColor clearColor]];
 		[$addGradeButton setTitleColor:[$addGradeButton tintColor] forState:UIControlStateNormal];
 		[$addGradeButton setTitleShadowColor:[UIColor blackColor] forState:UIControlStateHighlighted];
 		[$addGradeButton addTarget:self action:@selector(thisIsACoolMethodButIAmSadIAlsoLoveCris:) forControlEvents:UIControlEventTouchUpInside];
 		[self addSubview:$addGradeButton];
-		
-		$pickerSheet = [[PickerActionSheet alloc] initWithHeight:260.f pieChartView:self];
 	}
 
 	return self;
@@ -1792,45 +1830,16 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)thisIsACoolMethodButIAmSadIAlsoLoveCris:(UIButton *)button {
-	[$pickerSheet display];
+	PickerActionSheet *sheet = [[PickerActionSheet alloc] initWithHeight:260.f];
+        [sheet setDelegate:self];
+        [sheet display];
+        [sheet release];
+        
+	[self setUserInteractionEnabled:NO];
 }
 
-- (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)pickerView {
-	return 2;
-}
-
-- (NSInteger)pickerView:(UIPickerView *)pickerView numberOfRowsInComponent:(NSInteger)component {
-	return component==0 ? 2 : ($selectedContainerType == 0 ? 10 : 100);
-}
-
-- (CGFloat)pickerView:(UIPickerView *)pickerView rowHeightForComponent:(NSInteger)component {
-	return 44.f;
-}
-
-- (CGFloat)pickerView:(UIPickerView *)pickerView widthForComponent:(NSInteger)component {
-	return [pickerView bounds].size.width/2;
-}
-
-- (NSString *)pickerView:(UIPickerView *)pickerView titleForRow:(NSInteger)row forComponent:(NSInteger)component {
-	if (component == 0) {
-		return row==0 ? @"Nota" : @"Bônus";
-	}
-
-	if ($selectedContainerType == 0) return [NSString stringWithFormat:@"%d", row + 1];
-	return [NSString stringWithFormat:@"%.2f", (float)((row + 1)/10.f)];
-}
-
-- (void)pickerView:(UIPickerView *)pickerView didSelectRow:(NSInteger)row inComponent:(NSInteger)component {
-	if (component == 0) {
-		$selectedContainerType = row;
-		[pickerView reloadComponent:1];
-
-		[$pickerSheet setSubtitleLabelText:[@"Selecione o " stringByAppendingString:row==0 ? @"peso." : @"valor."]];
-	}
-	else $rowMap[$selectedContainerType] = row;
-}
-
-- (void)doneWithPickerView:(UISegmentedControl *)sender {
+- (void)didClosePickerSheet:(PickerActionSheet *)$pickerSheet withRowMap:(NSInteger *)$rowMap selectedContainerType:(NSInteger)$selectedContainerType {
+	[self setUserInteractionEnabled:YES];
 	[$pickerSheet dismiss];
 	
 	GradeContainer *container = [[[GradeContainer alloc] init] autorelease];
@@ -1856,14 +1865,747 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[$emptyPiece release];
 	[$pieces release];
 	
-	[$pickerSheet removeFromSuperview]; // Remove the picker sheet from the key window. (historical note: not having this caused ~20MB leaks)
-	[$pickerSheet release];
-	
 	[$addGradeButton release];
 
-	free($rowMap);
+	[super dealloc];
+}
+@end
+
+/* }}} */
+
+/* Grade Views {{{ */
+
+// To be honest, I don't like this.
+// We should use recursion. Recursive display of the tree, recursive building of the tree, etc.
+// I doubt Porto will ever require/do such thing (due to their css class naming, I doubt their system support recursion),
+// but I guess we should be better than them and implement this.
+// Maybe a finish-up update before release?
+
+// TODO: Make it impossible for Bonus Containers to call inappropriate methods 'by mistake'. Same for $NoGraders.
+@implementation GradeContainer
+@synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer, isBonus, section, showsGraph, isRecovery;
+
+- (void)setName:(NSString *)name_ {
+	name = [name_ retain];
+	NSLog(@"%p: name %@", self, name);
+}
+
+- (id)init {
+	if ((self = [super init])) {
+		//LOG_ALLOC(self);
+		debugLevel = 0;
+		isBonus = NO;
+		showsGraph = YES;
+		isRecovery = NO;
+	}
+
+	return self;
+}
+
+- (id)copyWithZone:(NSZone *)zone {
+	GradeContainer *copy = [[[self class] alloc] init];
+	[copy setName:[[self name] copy]];
+	[copy setGrade:[[self grade] copy]];
+	[copy setValue:[[self value] copy]];
+	[copy setAverage:[[self average] copy]];
+	[copy setSubGradeContainers:[[NSMutableArray alloc] initWithArray:[self subGradeContainers] copyItems:YES]];
+	[copy setSubBonusContainers:[[NSMutableArray alloc] initWithArray:[self subBonusContainers] copyItems:YES]];
+	[copy setWeight:[self weight]];
+	[copy setDebugLevel:[self debugLevel]];
+	[copy setSuperContainer:[self superContainer]];
+	[copy setIsBonus:[self isBonus]];
+	[copy setSection:[self section]];
+	[copy setShowsGraph:[self showsGraph]];
+	[copy setIsRecovery:[self isRecovery]];
+
+	return copy;
+}
+
+- (NSInteger)totalWeight {
+	NSInteger ret = 0;
+	for (GradeContainer *container in [self subGradeContainers])
+		ret += [container weight];
+
+	return ret;
+}
+
+- (CGFloat)$gradePercentage {
+	if ([grade isEqualToString:@"$NoGrade"] || [value isEqualToString:@"$NoGrade"]) return 0.f;
+	return [grade floatValue]/[value floatValue]*100;
+}
+
+- (BOOL)isAboveAverage {
+	return [self $gradePercentage] >= kPortoAverage;
+}
+
+- (NSString *)gradePercentage {
+	return [NSString stringWithFormat:@"%.0f%%", [self $gradePercentage]];
+}
+
+- (void)calculateGradeFromSubgrades {
+	NSInteger gradeSum = 0;
+	for (GradeContainer *container in [self subGradeContainers]) {
+		if ([[container grade] isEqualToString:@"$NoGrade"]) continue;
+		gradeSum += [[container grade] floatValue] * [container weight];
+	}
+	
+	[self setGrade:[NSString stringWithFormat:@"%.2f", (double)gradeSum / [self totalWeight]]];
+}
+
+- (float)gradeInSupercontainer {
+	if ([[self grade] isEqualToString:@"$NoGrade"]) return 0.f;
+
+	NSInteger superTotalWeight = [[self superContainer] totalWeight];
+	return [[self grade] floatValue] * [self weight] / superTotalWeight;
+}
+
+- (void)makeValueTen {
+	[self setValue:[@"10,00" americanFloat]];
+}
+
+- (void)calculateAverageFromSubgrades {
+	NSInteger averageSum = 0;
+	for (GradeContainer *container in [self subGradeContainers]) {
+		if ([[container average] isEqualToString:@"$NoGrade"]) continue;
+		averageSum += [[container average] floatValue] * [container weight];
+	}
+	
+	[self setAverage:[NSString stringWithFormat:@"%.2f", (double)averageSum / [self totalWeight]]];
+}
+
+- (NSInteger)indexAtSupercontainer {
+	return [[[self superContainer] subGradeContainers] indexOfObject:self];
+}
+
+- (void)dealloc {
+	NSLog(@"GradeContainer dealloc");
+	
+	[name release];
+	[grade release];
+	[value release];
+	[average release];
+	[subGradeContainers release];
+	[subBonusContainers release];
+	//[superContainer release];
 
 	[super dealloc];
+}
+
+// debug. don't complain :p
+- (NSString *)description {
+	NSMutableString *tabString = [[[NSMutableString alloc] initWithString:@""] autorelease];
+	for (int i=0; i<[self debugLevel]; i++) [tabString appendString:@"\t"];
+
+	NSString *selfstr = [NSString stringWithFormat:@"%@<GradeContainer: %p> (%@): %@/%@(%d) + %@", tabString, self, [self name], [self grade], [self value], [self weight], [self average]];
+	NSMutableString *mutableString = [[[NSMutableString alloc] initWithString:[selfstr stringByAppendingString:@"\n"]] autorelease];
+	
+	for (GradeContainer *container in [self subGradeContainers]) {
+		NSString *containerstr = [container description];
+		[mutableString appendString:containerstr];
+	}
+
+	return mutableString;
+}
+
+- (void)attemptToFixValues {
+	for (GradeContainer *container in [self subGradeContainers]) {
+		if ([[container value] isEqualToString:@"$NoGrade"]) {
+			int undefinedSiblings = 0;
+			float valueSum = 0.f;
+
+			for (GradeContainer *sibling in [[container superContainer] subGradeContainers]) {
+				if ([[sibling value] isEqualToString:@"$NoGrade"]) undefinedSiblings++;
+				else valueSum += [[sibling value] floatValue];
+			}
+			
+			if (undefinedSiblings == 1) {
+				[container setValue:[NSString stringWithFormat:@"%f", 10.f - valueSum]];
+			}
+		}
+
+		[container attemptToFixValues];
+	}
+}
+
+- (BOOL)hasGrade {
+	return ![[self grade] isEqualToString:@"$NoGrade"];
+}
+
+- (BOOL)hasAverage {
+	return ![[self average] isEqualToString:@"$NoGrade"];
+}
+
+/*- (void)release {
+	[super release];
+        LOG_RELEASE(self);
+}
+
+- (id)retain {
+	id r = [super retain];
+        LOG_RETAIN(self);
+        return r;
+}*/
+@end
+
+// FIXME: Review ranges on both classes.
+@implementation SubjectTableHeaderView
+- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
+	CGFloat zoneWidth2 = rect.size.width/4;
+	
+	NSString *gradeString__ = ![[self container] hasGrade] ? @"N/A" : [[self container] grade];
+	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
+	CFAttributedStringRef weightString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Peso\n" stringByAppendingString:[NSString stringWithFormat:@"%d", [[self container] weight]]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange weightContentRange = CFRangeMake(5, CFAttributedStringGetLength(weightString_)-5);
+	NSString *averageString__ = ![[self container] hasAverage] ? @"N/A" : [[self container] average];
+	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:averageString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange averageContentRange = CFRangeMake(5, CFAttributedStringGetLength(averageString_)-5);
+	NSString *totalString__ = ![[self container] hasGrade] ? @"N/A" : [NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]];
+	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:totalString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange totalContentRange = CFRangeMake(5, CFAttributedStringGetLength(totalString_)-5);
+
+	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
+	CFAttributedStringRemoveAttribute(gradeString, gradeContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(gradeString, gradeContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(gradeString_);
+
+	CFMutableAttributedStringRef weightString = CFAttributedStringCreateMutableCopy(NULL, 0, weightString_);
+	CFAttributedStringRemoveAttribute(weightString, weightContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(weightString, weightContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(weightString_);
+
+	CFMutableAttributedStringRef averageString = CFAttributedStringCreateMutableCopy(NULL, 0, averageString_);
+	CFAttributedStringRemoveAttribute(averageString, averageContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(averageString, averageContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(averageString_);
+
+	CFMutableAttributedStringRef totalString = CFAttributedStringCreateMutableCopy(NULL, 0, totalString_);
+	CFAttributedStringRemoveAttribute(totalString, totalContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(totalString, totalContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(totalString_);
+	
+	CTFramesetterRef gradeFramesetter = CTFramesetterCreateWithAttributedString(gradeString); CFRelease(gradeString);
+	CTFramesetterRef weightFramesetter = CTFramesetterCreateWithAttributedString(weightString); CFRelease(weightString);
+	CTFramesetterRef averageFramesetter = CTFramesetterCreateWithAttributedString(averageString); CFRelease(averageString);
+	CTFramesetterRef totalFramesetter = CTFramesetterCreateWithAttributedString(totalString); CFRelease(totalString);
+	
+	CGRect gradeRect = CGRectMake(rect.origin.x, 0.f, zoneWidth2, rect.size.height);
+	CGRect weightRect = CGRectMake(rect.origin.x + zoneWidth2, 0.f, zoneWidth2, rect.size.height);
+	CGRect averageRect = CGRectMake(rect.origin.x + zoneWidth2*2, 0.f, zoneWidth2, rect.size.height);
+	CGRect totalRect = CGRectMake(rect.origin.x + zoneWidth2*3, 0.f, zoneWidth2, rect.size.height);
+
+	DrawFramesetter(context, gradeFramesetter, gradeRect); CFRelease(gradeFramesetter);
+	DrawFramesetter(context, weightFramesetter, weightRect); CFRelease(weightFramesetter);
+	DrawFramesetter(context, averageFramesetter, averageRect); CFRelease(averageFramesetter);
+	DrawFramesetter(context, totalFramesetter, totalRect); CFRelease(totalFramesetter);
+}
+@end
+
+@implementation SubjectTableViewCellContentView
+- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
+	CGFloat zoneWidth2 = rect.size.width / 5;
+	
+	NSString *gradeString__ = ![[self container] hasGrade] ? @"N/A" : [[self container] grade];
+	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
+	CFAttributedStringRef valueString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Valor\n" stringByAppendingString:[[self container] value]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange valueContentRange = CFRangeMake(5, CFAttributedStringGetLength(valueString_)-5);
+	NSString *percentString__ = ![[self container] hasGrade] ? @"N/A" : [[self container] gradePercentage];
+	CFAttributedStringRef percentString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"%\n" stringByAppendingString:percentString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange percentContentRange = CFRangeMake(2, CFAttributedStringGetLength(percentString_)-2);
+	NSString *averageString__ = ![[self container] hasAverage] ? @"N/A" : [[self container] average];
+	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:averageString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange averageContentRange = CFRangeMake(5, CFAttributedStringGetLength(averageString_)-5);
+	NSString *totalString__ = ![[self container] hasGrade] ? @"N/A" : [NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]];
+	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:totalString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange totalContentRange = CFRangeMake(5, CFAttributedStringGetLength(totalString_)-5);
+
+	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
+	CFAttributedStringRemoveAttribute(gradeString, gradeContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(gradeString, gradeContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(gradeString_);
+
+	CFMutableAttributedStringRef valueString = CFAttributedStringCreateMutableCopy(NULL, 0, valueString_);
+	CFAttributedStringRemoveAttribute(valueString, valueContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(valueString, valueContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(valueString_);
+
+	CFMutableAttributedStringRef percentString = CFAttributedStringCreateMutableCopy(NULL, 0, percentString_);
+	CFAttributedStringRemoveAttribute(percentString, percentContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(percentString, percentContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(percentString_);
+	
+	CFMutableAttributedStringRef averageString = CFAttributedStringCreateMutableCopy(NULL, 0, averageString_);
+	CFAttributedStringRemoveAttribute(averageString, averageContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(averageString, averageContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(averageString_);
+
+	CFMutableAttributedStringRef totalString = CFAttributedStringCreateMutableCopy(NULL, 0, totalString_);
+	CFAttributedStringRemoveAttribute(totalString, totalContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(totalString, totalContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(totalString_);
+	
+	CTFramesetterRef gradeFramesetter = CTFramesetterCreateWithAttributedString(gradeString); CFRelease(gradeString);
+	CTFramesetterRef valueFramesetter = CTFramesetterCreateWithAttributedString(valueString); CFRelease(valueString);
+	CTFramesetterRef percentFramesetter = CTFramesetterCreateWithAttributedString(percentString); CFRelease(percentString);
+	CTFramesetterRef averageFramesetter = CTFramesetterCreateWithAttributedString(averageString); CFRelease(averageString);
+	CTFramesetterRef totalFramesetter = CTFramesetterCreateWithAttributedString(totalString); CFRelease(totalString);
+	
+	CGRect gradeRect = CGRectMake(rect.origin.x, 0.f, zoneWidth2, rect.size.height);
+	CGRect valueRect = CGRectMake(rect.origin.x + zoneWidth2, 0.f, zoneWidth2, rect.size.height);
+	CGRect percentRect = CGRectMake(rect.origin.x + zoneWidth2*2, 0.f, zoneWidth2, rect.size.height);
+	CGRect averageRect = CGRectMake(rect.origin.x + zoneWidth2*3, 0.f, zoneWidth2, rect.size.height);
+	CGRect totalRect = CGRectMake(rect.origin.x + zoneWidth2*4, 0.f, zoneWidth2, rect.size.height);
+
+	DrawFramesetter(context, gradeFramesetter, gradeRect); CFRelease(gradeFramesetter);
+	DrawFramesetter(context, valueFramesetter, valueRect); CFRelease(valueFramesetter);
+	DrawFramesetter(context, percentFramesetter, percentRect); CFRelease(percentFramesetter);
+	DrawFramesetter(context, averageFramesetter, averageRect); CFRelease(averageFramesetter);
+	DrawFramesetter(context, totalFramesetter, totalRect); CFRelease(totalFramesetter);
+}
+@end
+
+#define TEXTFIELD_CENTER_HEIGHT_FIX 2.f
+@implementation SubjectBonusTableHeaderView
+- (id)initWithFrame:(CGRect)rect {
+	if ((self = [super initWithFrame:rect])) {
+		NSLog(@"VIEW RECT %@", NSStringFromCGRect(rect));
+
+		$textField = [[UITextField alloc] initWithFrame:CGRectMake(rect.size.width/2 + rect.size.width/4, rect.size.height/2 - TEXTFIELD_CENTER_HEIGHT_FIX, rect.size.width/4, rect.size.height/2)];
+		[$textField setPlaceholder:@"1.00"];
+		[$textField setFont:[UIFont boldSystemFontOfSize:pxtopt(rect.size.height/2)]];
+		[$textField setTextAlignment:NSTextAlignmentCenter];
+		[$textField setContentVerticalAlignment:UIControlContentVerticalAlignmentCenter];
+		[$textField setDelegate:self];
+		[self addSubview:$textField];
+	}
+	
+	return self;
+}
+
+- (void)setContainer:(GradeContainer *)container {
+	// FIXME!!!!! Instead of using name use the id (which would be like Atv1, Atv2...)
+	// NOTE: We call NSUserDefaults and not [[self container] value] because value has 1.0 as value so we couldn't tell whether it was real or the placeholder.
+	NSString *text = [[NSUserDefaults standardUserDefaults] stringForKey:[[NSString stringWithFormat:@"BonusValue:%@:%@", [[container superContainer] name], [container name]] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale]];
+	NSLog(@"key ended up as %@, and text as %@", [[NSString stringWithFormat:@"BonusValue:%@:%@", [[container superContainer] name], [container name]] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale], text);
+	[$textField setText:[text length] > 0 ? text : nil];
+        
+        [super setContainer:container];
+}
+
+- (UITableView *)$tableView {
+	UIView *tableView = self;
+	while (![tableView isKindOfClass:[UITableView class]]) tableView = [tableView superview];
+
+	return (UITableView *)tableView;
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];		
+}
+
+- (void)keyboardWillShow:(NSNotification *)notification {
+	UITableView *tableView = [self $tableView];
+
+	CGFloat height = [[[notification userInfo] objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue].size.height;
+	NSTimeInterval duration = [[[notification userInfo] objectForKey:UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+	
+	UIEdgeInsets edgeInsets = UIEdgeInsetsMake(0, 0, height - HEIGHT_OF_TABBAR, 0);
+	[UIView animateWithDuration:duration animations:^{
+		[tableView setContentInset:edgeInsets];
+		[tableView setScrollIndicatorInsets:edgeInsets];
+		[tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:NSNotFound inSection:[[self container] section]] atScrollPosition:UITableViewScrollPositionTop animated:YES];
+	}];
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification {
+	UITableView *tableView = [self $tableView];
+	
+        NSTimeInterval duration = [[[notification userInfo] objectForKey:UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+
+	[UIView animateWithDuration:duration animations:^{
+		[tableView setContentInset:UIEdgeInsetsZero];
+		[tableView setScrollIndicatorInsets:UIEdgeInsetsZero];
+	}];
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField {
+	NSString *text = [[textField text] americanFloat];
+	if ([text floatValue] == 0 || [text floatValue] < [[[self container] grade] floatValue]) text = [NSString string];
+	else {
+		text = [NSString stringWithFormat:@"%.2f", [text floatValue]];
+
+		[[self container] setValue:text];
+
+		UIView *subjectView = self;
+		while (![subjectView isKindOfClass:[GradesSubjectView class]]) subjectView = [subjectView superview];
+		[(PieChartView *)[subjectView viewWithTag:500] updateBonusSliders];
+	}
+	
+	[textField setText:[text isEqualToString:[NSString string]] ? nil : text];
+	[[NSUserDefaults standardUserDefaults] setObject:text forKey:[[NSString stringWithFormat:@"BonusValue:%@:%@", [[[self container] superContainer] name], [[self container] name]] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale]];
+	[[NSUserDefaults standardUserDefaults] synchronize];
+	
+	[[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillShowNotification object:nil];
+	[[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillHideNotification object:nil];
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+	[textField resignFirstResponder];
+	return YES;
+}
+
+- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
+	CGFloat zoneWidth2 = rect.size.width / 2;
+	NSLog(@"zoneWidth2 = %f; rect.size.width = %f", zoneWidth2, rect.size.width);
+	
+	NSString *gradeString__ = [[[self container] grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [[self container] grade];
+	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
+	
+	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
+	CFAttributedStringRemoveAttribute(gradeString, gradeContentRange, kCTFontAttributeName);
+	CFAttributedStringSetAttribute(gradeString, gradeContentRange, kCTFontAttributeName, boldFont);
+	CFRelease(gradeString_);
+	
+	CTFramesetterRef gradeFramesetter = CTFramesetterCreateWithAttributedString(gradeString); CFRelease(gradeString);
+	CTFramesetterRef valueFramesetter = CreateFramesetter(dataFont, textColor, CFSTR("Valor\n"), NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
+
+	DrawFramesetter(context, gradeFramesetter, CGRectMake(rect.origin.x, 0.f, zoneWidth2, rect.size.height)); CFRelease(gradeFramesetter);
+	DrawFramesetter(context, valueFramesetter, CGRectMake(rect.origin.x + zoneWidth2, 0.f, zoneWidth2, rect.size.height)); CFRelease(valueFramesetter);
+}
+@end
+
+@implementation TestView
+@synthesize container;
+
+- (void)drawRect:(CGRect)rect {
+	//NSLog(@"-[TestView drawRect:%@] with %@", NSStringFromCGRect(rect), NSStringFromClass([self class]));
+	
+	CGContextRef context = UIGraphicsGetCurrentContext();
+	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
+	CGContextTranslateCTM(context, 0, self.bounds.size.height);
+	CGContextScaleCTM(context, 1.0, -1.0);
+	
+	// FIXME: hacking my own apis; not a good sign.
+	bool isEven = [container indexAtSupercontainer] % 2 == 0;
+	if (rect.size.height != 44.f) isEven = !isEven;
+
+	[(isEven ? UIColorFromHexWithAlpha(0xfafafa, 1.f) : [UIColor whiteColor]) setFill];
+	CGContextFillRect(context, rect);
+	
+	CGFloat zoneHeight = rect.size.height/2;
+	CGFloat zoneWidth = [container isBonus] || ![container showsGraph] ? rect.size.width/2 : rect.size.width/3;
+	
+	// ZONE 1
+	UIColor *colorForGrade = [[container grade] isEqualToString:@"$NoGrade"] || [container isBonus] ? UIColorFromHexWithAlpha(0x708090, 1.f) : ColorForGrade([container $gradePercentage]/10.f);
+	[colorForGrade setFill];
+	CGRect circleRect = CGRectMake(8.f, zoneHeight/2, zoneHeight, zoneHeight);
+	CGContextFillEllipseInRect(context, circleRect);
+	
+	CGColorRef textColor = [[UIColor blackColor] CGColor];
+
+	NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
+	CTFontRef dataFont = CTFontCreateWithName((CFStringRef)systemFont, pxtopt(zoneHeight), NULL);
+	CTFontRef boldFont = CTFontCreateCopyWithSymbolicTraits(dataFont, pxtopt(zoneHeight), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
+	
+	NSString *gradeString = [[container grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [container grade];
+	CTFramesetterRef fpGradeFramesetter = CreateFramesetter(boldFont, textColor, (CFStringRef)gradeString, NO, kCTLineBreakByTruncatingTail);
+	CGSize gradeRequirement = CTFramesetterSuggestFrameSizeWithConstraints(fpGradeFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL);
+	gradeRequirement.width += 5.f;
+
+	CTFramesetterRef examFramesetter = CreateFramesetter(dataFont, textColor, (CFStringRef)[container name], NO, kCTLineBreakByTruncatingTail);
+	CGFloat examWidth = circleRect.origin.x + circleRect.size.width + 8.f;
+	CGRect examRect = CGRectMake(examWidth, zoneHeight/2, zoneWidth - examWidth - gradeRequirement.width, zoneHeight);
+	DrawFramesetter(context, examFramesetter, examRect);
+	CFRelease(examFramesetter);
+	
+	DrawFramesetter(context, fpGradeFramesetter, CGRectMake(examRect.origin.x + examRect.size.width, zoneHeight/2, gradeRequirement.width, zoneHeight));
+	CFRelease(fpGradeFramesetter);
+
+	// ZONE 2
+	[self drawDataZoneRect:CGRectMake(zoneWidth, 0.f, zoneWidth, rect.size.height) textColor:textColor dataFont:dataFont boldFont:boldFont inContext:context];
+	
+	if ([container isBonus] || ![container showsGraph]) {
+		CFRelease(dataFont);
+		CFRelease(boldFont);
+		
+		return;
+	}
+
+	// ZONE 3
+	CTFramesetterRef gradeLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Nota"), NO, kCTLineBreakByTruncatingTail);
+	CTFramesetterRef averageLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Média"), NO, kCTLineBreakByTruncatingTail);
+	
+	CGSize averageSize = CTFramesetterSuggestFrameSizeWithConstraints(averageLabelFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL);
+	averageSize.width += 5.f;
+	DrawFramesetter(context, gradeLabelFramesetter, CGRectMake(zoneWidth * 2 + 5.f, zoneHeight, averageSize.width, zoneHeight)); CFRelease(gradeLabelFramesetter);
+	DrawFramesetter(context, averageLabelFramesetter, CGRectMake(zoneWidth * 2 + 5.f, 0.f, averageSize.width, zoneHeight)); CFRelease(averageLabelFramesetter);
+	
+	UIColor *emptyColor = UIColorFromHexWithAlpha(0xC0C0C0, 1.f);
+	[emptyColor setFill];
+	
+	CGFloat baseGraphWidth = zoneWidth - averageSize.width - 10.f;
+	CGRect baseGraphRect = CGRectMake(zoneWidth * 2 + averageSize.width + 5.f, 0.f, baseGraphWidth, zoneHeight - 4.f);
+
+	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 2.f}, baseGraphRect.size});
+	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 6.f + baseGraphRect.size.height}, baseGraphRect.size});
+
+	CGFloat gradeBarWidth = [[container grade] floatValue] / [[container value] floatValue] * baseGraphWidth;
+	CGFloat averageBarWidth = [[container average] floatValue] / [[container value] floatValue] * baseGraphWidth;
+
+	[ColorForGrade([[container average] floatValue], NO) setFill];
+	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 2.f}, {averageBarWidth, baseGraphRect.size.height}});
+	[ColorForGrade([[container grade] floatValue]) setFill];
+	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 6.f + baseGraphRect.size.height}, {gradeBarWidth, baseGraphRect.size.height}});
+	
+	CTFontRef smallerFont = CTFontCreateCopyWithSymbolicTraits(dataFont, pxtopt(baseGraphRect.size.height), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
+
+	CTFramesetterRef gradeBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)gradeString, NO, kCTLineBreakByTruncatingTail);
+	CGFloat requiredWidth = CTFramesetterSuggestFrameSizeWithConstraints(gradeBarFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL).width;
+	CGFloat xOrigin = baseGraphRect.origin.x + gradeBarWidth - requiredWidth - 3.f;
+	CGRect gradeBarRect = CGRectMake(xOrigin > baseGraphRect.origin.x ? xOrigin : baseGraphRect.origin.x+2.f, 6.f + baseGraphRect.size.height, requiredWidth, baseGraphRect.size.height);
+	DrawFramesetter(context, gradeBarFramesetter, gradeBarRect); CFRelease(gradeBarFramesetter);
+
+	NSString *averageString = [[container average] isEqualToString:@"$NoGrade"] ? @"N/A" : [container average];
+	CTFramesetterRef averageBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)averageString, NO, kCTLineBreakByTruncatingTail);
+	CGFloat requiredWidthAvg = CTFramesetterSuggestFrameSizeWithConstraints(averageBarFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL).width;
+	CGFloat xOriginAvg = baseGraphRect.origin.x + averageBarWidth - requiredWidth - 3.f;
+	CGRect averageBarRect = CGRectMake(xOriginAvg > baseGraphRect.origin.x ? xOriginAvg : baseGraphRect.origin.x+2.f, 2.f, requiredWidthAvg, baseGraphRect.size.height);
+	DrawFramesetter(context, averageBarFramesetter, averageBarRect); CFRelease(averageBarFramesetter);
+	
+	CFRelease(smallerFont);
+	CFRelease(dataFont);
+	CFRelease(boldFont);
+}
+
+- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
+	return;
+}
+
+- (void)dealloc {
+	NSLog(@"TestView dealloc");
+
+	[container release];
+	[super dealloc];
+}
+@end
+
+@implementation SubjectView
+- (id)initWithFrame:(CGRect)frame container:(GradeContainer *)container {
+	if ((self = [super initWithFrame:frame])) {
+		$container = [container retain];
+		[self setBackgroundColor:[UIColor whiteColor]];
+
+		NoButtonDelayTableView *tableView = [[NoButtonDelayTableView alloc] initWithFrame:[self bounds] style:UITableViewStylePlain];
+		[tableView setDataSource:self];
+		[tableView setDelegate:self];
+		[tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
+		[tableView setTag:77];
+		[self addSubview:tableView];
+		[tableView release];
+		
+		// FIXME: Use CoreText instead of attributed UILabels.
+		// (I'm asking myself why I did those in the first place.)
+		UIView *tableHeaderView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 54.f)];
+		CGFloat halfHeight = [tableHeaderView bounds].size.height/2;
+		
+		UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f)];
+		[nameLabel setBackgroundColor:[UIColor clearColor]];
+		[nameLabel setTextColor:[UIColor blackColor]];
+		[nameLabel setFont:[UIFont boldSystemFontOfSize:pxtopt(halfHeight)]];
+		[nameLabel setNumberOfLines:0];
+		[nameLabel setText:[container name]];
+		[tableHeaderView addSubview:nameLabel];
+		/*CGFloat width = [nameLabel bounds].size.width;
+		[nameLabel sizeToFit];
+		[nameLabel setFrame:CGRectMake(nameLabel.bounds.origin.x, nameLabel.bounds.origin.y, width, nameLabel.bounds.size.height)];*/
+		[nameLabel release];
+
+		if (![[container grade] isEqualToString:@"$NoGrade"]) {
+			[self setupTableTopGradesWithTableHeaderView:tableHeaderView];
+		}
+		
+		[tableView setTableHeaderView:tableHeaderView];
+		[tableHeaderView release];
+		
+		[self setupTableFooterView];
+	}
+
+	return self;
+}
+
+- (void)setupTableFooterView {
+	return;
+}
+
+- (void)setupTableTopGradesWithTableHeaderView:(UIView *)tableHeaderView {
+	return;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return [[$container subGradeContainers] count] + [[$container subBonusContainers] count];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	if (section >= [[$container subGradeContainers] count]) return 0;
+	return [[[[$container subGradeContainers] objectAtIndex:section] subGradeContainers] count];
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PortoAppSubjectViewTableViewCell"];
+	if (cell == nil) {
+		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppSubjectViewTableViewCell"] autorelease];
+		
+		// FIXME: Remove this constant 32.f, and 55.
+		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, 32.f)];
+		[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * 3, scrollView.bounds.size.height)];
+		[scrollView setScrollsToTop:NO];
+		[scrollView setShowsHorizontalScrollIndicator:NO];
+		[scrollView setPagingEnabled:YES];
+		[scrollView setTag:55];
+		
+		SubjectTableViewCellContentView *contentView = [[SubjectTableViewCellContentView alloc] initWithFrame:CGRectMake(0.f, 0.f, [scrollView contentSize].width, [scrollView contentSize].height)];
+		[scrollView addSubview:contentView];
+		[contentView release];
+
+		[[cell contentView] addSubview:scrollView];
+		[scrollView release];
+	}
+	
+	SubjectTableViewCellContentView *contentView_ = (SubjectTableViewCellContentView *)[[[[cell contentView] viewWithTag:55] subviews] objectAtIndex:0];
+	[contentView_ setContainer:[[[[$container subGradeContainers] objectAtIndex:[indexPath section]] subGradeContainers] objectAtIndex:[indexPath row]]];
+
+	return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+	return 32.f;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+	return 44.f;
+}
+
+// TODO: UITableViewHeaderFooterView is iOS6+. I dislike having to rely on apis > iOS 5. :(
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	BOOL isBonus = section >= [[$container subGradeContainers] count];
+	BOOL notShowsGraph = !isBonus && ![[[$container subGradeContainers] objectAtIndex:section] showsGraph];
+
+	NSString *identifier = isBonus ? @"PortoAppSubjectViewTableHeaderViewBonus" : @"PortoAppSubjectViewTableHeaderViewGrade";
+
+	UITableViewHeaderFooterView *headerView = [tableView dequeueReusableHeaderFooterViewWithIdentifier:identifier];
+	if (headerView == nil) {
+		headerView = [[[UITableViewHeaderFooterView alloc] initWithReuseIdentifier:identifier] autorelease];
+
+		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, 44.f)];
+		[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * (isBonus || notShowsGraph ? 2 : 3), scrollView.bounds.size.height)];
+		[scrollView setScrollsToTop:NO]; 
+		[scrollView setShowsHorizontalScrollIndicator:NO];
+		[scrollView setPagingEnabled:YES];
+		[scrollView setTag:5];
+
+		Class testViewClass = isBonus ? [SubjectBonusTableHeaderView class] : [SubjectTableHeaderView class];
+		CGRect frame = CGRectMake(0.f, 0.f, [scrollView contentSize].width, [scrollView contentSize].height);
+		TestView *testView = [[testViewClass alloc] initWithFrame:frame];
+		[testView setTag:6];
+		[scrollView addSubview:testView];
+		[testView release];
+		
+		[[headerView contentView] addSubview:scrollView];
+		[scrollView release];
+	}
+	
+	GradeContainer *container = isBonus ? [[$container subBonusContainers] objectAtIndex:section - [[$container subGradeContainers] count]] : [[$container subGradeContainers] objectAtIndex:section];
+	[(TestView *)[[headerView viewWithTag:5] viewWithTag:6] setContainer:container];
+	[(UIScrollView *)[headerView viewWithTag:5] setContentOffset:CGPointMake(0.f, 0.f)];
+	[[[headerView viewWithTag:5] viewWithTag:6] setNeedsDisplay];
+	
+	return headerView;
+}
+
+- (void)dealloc {
+	NSLog(@"SubjectView dealloc");
+
+	[$container release];
+	[super dealloc];
+}
+@end
+
+@implementation GradesSubjectView
+- (void)setupTableTopGradesWithTableHeaderView:(UIView *)tableHeaderView {
+	NSString *gradeTitle = @"Nota: ";
+	NSString *averageTitle = @"Média: ";
+
+	NSMutableAttributedString *gradeAttributedString = [[NSMutableAttributedString alloc] initWithString:[gradeTitle stringByAppendingString:[$container grade]]];
+	[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [gradeTitle length])];
+	[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([gradeTitle length], [gradeAttributedString length]-[gradeTitle length])];
+	
+	NSMutableAttributedString *averageAttributedString = [[NSMutableAttributedString alloc] initWithString:[averageTitle stringByAppendingString:[$container average]]];
+	[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [averageTitle length])];
+	[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([averageTitle length], [averageAttributedString length]-[averageTitle length])];
+
+	CGRect nameLabelFrame = CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f);
+        UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 0.f, [self bounds].size.width/3, 27.f)];
+	[gradeLabel setBackgroundColor:[UIColor clearColor]];
+	[gradeLabel setTextColor:[UIColor blackColor]];
+	[gradeLabel setAttributedText:gradeAttributedString];
+	[gradeAttributedString release];
+	[tableHeaderView addSubview:gradeLabel];
+	[gradeLabel release];
+
+	UILabel *averageLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 22.f, [self bounds].size.width/3, 27.f)];
+	[averageLabel setBackgroundColor:[UIColor clearColor]];
+	[averageLabel setTextColor:[UIColor blackColor]];
+	[averageLabel setAttributedText:averageAttributedString];
+	[averageAttributedString release];
+	[tableHeaderView addSubview:averageLabel];
+	[averageLabel release];
+}
+
+- (void)setupTableFooterView {
+	UITableView *tableView = (UITableView *)[self viewWithTag:77];
+	
+	NSMutableArray *pieces = [NSMutableArray array];
+	for (GradeContainer *subContainer in [$container subGradeContainers]) {
+		PieChartPiece *piece = [[[PieChartPiece alloc] init] autorelease];
+		[piece setPercentage:[subContainer gradeInSupercontainer]*10.f];
+		[piece setContainer:subContainer];
+		[piece setColor:RandomColorHex()];
+		[piece setText:[subContainer name]];
+		[piece setIsBonus:NO];
+
+		[pieces addObject:piece];
+	}
+	for (GradeContainer *bonusContainer in [$container subBonusContainers]) {
+		PieChartPiece *piece = [[[PieChartPiece alloc] init] autorelease];
+		[piece setPercentage:[[bonusContainer grade] floatValue] * 10.f];
+		[piece setContainer:bonusContainer];
+		[piece setColor:RandomColorHex()];
+		[piece setText:[bonusContainer name]];
+		[piece setIsBonus:YES];
+
+		[pieces addObject:piece];
+	}
+	
+	PieChartPiece *emptyPiece = [[[PieChartPiece alloc] init] autorelease];
+	[emptyPiece setPercentage:0.f];
+	[emptyPiece setColor:0x000000];
+	[emptyPiece setText:@"Empty"];
+	
+	CGFloat rowsHeight = [pieces count] * [PieChartView rowHeight] + ([PieChartView extraHeight] + kPieChartViewInset*2);
+	CGFloat minHeight = [PieChartView minHeightForRadius:55.f];
+	PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, rowsHeight < minHeight ? minHeight : rowsHeight) pieces:pieces count:[[$container subGradeContainers] count] radius:55.f emptyPiece:emptyPiece];
+	[mainPieChart setTag:500];
+	[mainPieChart setDelegate:self];
+	
+	UIView *footerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, [mainPieChart bounds].size.height)];
+	[footerView addSubview:mainPieChart];
+	[mainPieChart release];
+
+	[tableView setTableFooterView:footerView];
+	[footerView release];
 }
 @end
 
@@ -2375,10 +3117,14 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 - (id)init {
 	if ((self = [super init])) {
-		$keychainItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoApp" accessGroup:@"am.theiostre.portoapp.keychain"];
+		/*$keychainItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoApp" accessGroup:@"am.theiostre.portoapp.keychain"];
 		$gradeKeyItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppX" accessGroup:@"am.theiostre.portoapp.keychain"];
 		$papersKeyItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppY" accessGroup:@"am.theiostre.portoapp.keychain"];
-		$truyyutItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppZ" accessGroup:@"am.theiostre.portoapp.keychain"];
+		$truyyutItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppZ" accessGroup:@"am.theiostre.portoapp.keychain"];*/
+                $keychainItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoApp" accessGroup:nil];
+                $gradeKeyItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppX" accessGroup:nil];
+                $papersKeyItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppY" accessGroup:nil];
+                $truyyutItem = [[KeychainItemWrapper alloc] initWithIdentifier:@"PortoAppZ" accessGroup:nil];
 
 		if (![[$keychainItem objectForKey:(id)kSecAttrAccount] isEqualToString:@""]) {
 			$accountInfo = [[NSDictionary dictionaryWithObjectsAndKeys:
@@ -3902,740 +4648,6 @@ you will still get a valid token for name "Funcionário".
 
 /* Grades Controller {{{ */
 
-// To be honest, I don't like this.
-// We should use recursion. Recursive display of the tree, recursive building of the tree, etc.
-// I doubt Porto will ever require/do such thing (due to their css class naming, I doubt their system support recursion),
-// but I guess we should be better than them and implement this.
-// Maybe a finish-up update before release?
-
-// TODO: Make it impossible for Bonus Containers to call inappropriate methods 'by mistake'. Same for $NoGraders.
-@implementation GradeContainer
-@synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer, isBonus, section, showsGraph, isRecovery;
-
-- (void)setName:(NSString *)name_ {
-	name = [name_ retain];
-	NSLog(@"%p: name %@", self, name);
-}
-
-- (id)init {
-	if ((self = [super init])) {
-		//LOG_ALLOC(self);
-		debugLevel = 0;
-		isBonus = NO;
-		showsGraph = YES;
-		isRecovery = NO;
-	}
-
-	return self;
-}
-
-- (id)copyWithZone:(NSZone *)zone {
-	GradeContainer *copy = [[[self class] alloc] init];
-	[copy setName:[[self name] copy]];
-	[copy setGrade:[[self grade] copy]];
-	[copy setValue:[[self value] copy]];
-	[copy setAverage:[[self average] copy]];
-	[copy setSubGradeContainers:[[NSMutableArray alloc] initWithArray:[self subGradeContainers] copyItems:YES]];
-	[copy setSubBonusContainers:[[NSMutableArray alloc] initWithArray:[self subBonusContainers] copyItems:YES]];
-	[copy setWeight:[self weight]];
-	[copy setDebugLevel:[self debugLevel]];
-	[copy setSuperContainer:[self superContainer]];
-	[copy setIsBonus:[self isBonus]];
-	[copy setSection:[self section]];
-	[copy setShowsGraph:[self showsGraph]];
-	[copy setIsRecovery:[self isRecovery]];
-
-	return copy;
-}
-
-- (NSInteger)totalWeight {
-	NSInteger ret = 0;
-	for (GradeContainer *container in [self subGradeContainers])
-		ret += [container weight];
-
-	return ret;
-}
-
-- (CGFloat)$gradePercentage {
-	if ([grade isEqualToString:@"$NoGrade"] || [value isEqualToString:@"$NoGrade"]) return 0.f;
-	return [grade floatValue]/[value floatValue]*100;
-}
-
-- (BOOL)isAboveAverage {
-	return [self $gradePercentage] >= kPortoAverage;
-}
-
-- (NSString *)gradePercentage {
-	return [NSString stringWithFormat:@"%.0f%%", [self $gradePercentage]];
-}
-
-- (void)calculateGradeFromSubgrades {
-	NSInteger gradeSum = 0;
-	for (GradeContainer *container in [self subGradeContainers]) {
-		if ([[container grade] isEqualToString:@"$NoGrade"]) continue;
-		gradeSum += [[container grade] floatValue] * [container weight];
-	}
-	
-	[self setGrade:[NSString stringWithFormat:@"%.2f", (double)gradeSum / [self totalWeight]]];
-}
-
-- (float)gradeInSupercontainer {
-	if ([[self grade] isEqualToString:@"$NoGrade"]) return 0.f;
-
-	NSInteger superTotalWeight = [[self superContainer] totalWeight];
-	return [[self grade] floatValue] * [self weight] / superTotalWeight;
-}
-
-- (void)makeValueTen {
-	[self setValue:[@"10,00" americanFloat]];
-}
-
-- (void)calculateAverageFromSubgrades {
-	NSInteger averageSum = 0;
-	for (GradeContainer *container in [self subGradeContainers]) {
-		if ([[container average] isEqualToString:@"$NoGrade"]) continue;
-		averageSum += [[container average] floatValue] * [container weight];
-	}
-	
-	[self setAverage:[NSString stringWithFormat:@"%.2f", (double)averageSum / [self totalWeight]]];
-}
-
-- (NSInteger)indexAtSupercontainer {
-	return [[[self superContainer] subGradeContainers] indexOfObject:self];
-}
-
-- (void)dealloc {
-	NSLog(@"GradeContainer dealloc");
-	
-	[name release];
-	[grade release];
-	[value release];
-	[average release];
-	[subGradeContainers release];
-	[subBonusContainers release];
-	//[superContainer release];
-
-	[super dealloc];
-}
-
-// debug. don't complain :p
-- (NSString *)description {
-	NSMutableString *tabString = [[[NSMutableString alloc] initWithString:@""] autorelease];
-	for (int i=0; i<[self debugLevel]; i++) [tabString appendString:@"\t"];
-
-	NSString *selfstr = [NSString stringWithFormat:@"%@<GradeContainer: %p> (%@): %@/%@(%d) + %@", tabString, self, [self name], [self grade], [self value], [self weight], [self average]];
-	NSMutableString *mutableString = [[[NSMutableString alloc] initWithString:[selfstr stringByAppendingString:@"\n"]] autorelease];
-	
-	for (GradeContainer *container in [self subGradeContainers]) {
-		NSString *containerstr = [container description];
-		[mutableString appendString:containerstr];
-	}
-
-	return mutableString;
-}
-
-- (void)attemptToFixValues {
-	for (GradeContainer *container in [self subGradeContainers]) {
-		if ([[container value] isEqualToString:@"$NoGrade"]) {
-			int undefinedSiblings = 0;
-			float valueSum = 0.f;
-
-			for (GradeContainer *sibling in [[container superContainer] subGradeContainers]) {
-				if ([[sibling value] isEqualToString:@"$NoGrade"]) undefinedSiblings++;
-				else valueSum += [[sibling value] floatValue];
-			}
-			
-			if (undefinedSiblings == 1) {
-				[container setValue:[NSString stringWithFormat:@"%f", 10.f - valueSum]];
-			}
-		}
-
-		[container attemptToFixValues];
-	}
-}
-
-- (BOOL)hasGrade {
-	return ![[self grade] isEqualToString:@"$NoGrade"];
-}
-
-- (BOOL)hasAverage {
-	return ![[self average] isEqualToString:@"$NoGrade"];
-}
-
-/*- (void)release {
-	[super release];
-        LOG_RELEASE(self);
-}
-
-- (id)retain {
-	id r = [super retain];
-        LOG_RETAIN(self);
-        return r;
-}*/
-@end
-
-// FIXME: Review ranges on both classes.
-@implementation SubjectTableHeaderView
-- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
-	CGFloat zoneWidth2 = rect.size.width/4;
-	
-	NSString *gradeString__ = ![[self container] hasGrade] ? @"N/A" : [[self container] grade];
-	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
-	CFAttributedStringRef weightString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Peso\n" stringByAppendingString:[NSString stringWithFormat:@"%d", [[self container] weight]]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange weightContentRange = CFRangeMake(5, CFAttributedStringGetLength(weightString_)-5);
-	NSString *averageString__ = ![[self container] hasAverage] ? @"N/A" : [[self container] average];
-	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:averageString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange averageContentRange = CFRangeMake(5, CFAttributedStringGetLength(averageString_)-5);
-	NSString *totalString__ = ![[self container] hasGrade] ? @"N/A" : [NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]];
-	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:totalString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange totalContentRange = CFRangeMake(5, CFAttributedStringGetLength(totalString_)-5);
-
-	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
-	CFAttributedStringRemoveAttribute(gradeString, gradeContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(gradeString, gradeContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(gradeString_);
-
-	CFMutableAttributedStringRef weightString = CFAttributedStringCreateMutableCopy(NULL, 0, weightString_);
-	CFAttributedStringRemoveAttribute(weightString, weightContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(weightString, weightContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(weightString_);
-
-	CFMutableAttributedStringRef averageString = CFAttributedStringCreateMutableCopy(NULL, 0, averageString_);
-	CFAttributedStringRemoveAttribute(averageString, averageContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(averageString, averageContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(averageString_);
-
-	CFMutableAttributedStringRef totalString = CFAttributedStringCreateMutableCopy(NULL, 0, totalString_);
-	CFAttributedStringRemoveAttribute(totalString, totalContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(totalString, totalContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(totalString_);
-	
-	CTFramesetterRef gradeFramesetter = CTFramesetterCreateWithAttributedString(gradeString); CFRelease(gradeString);
-	CTFramesetterRef weightFramesetter = CTFramesetterCreateWithAttributedString(weightString); CFRelease(weightString);
-	CTFramesetterRef averageFramesetter = CTFramesetterCreateWithAttributedString(averageString); CFRelease(averageString);
-	CTFramesetterRef totalFramesetter = CTFramesetterCreateWithAttributedString(totalString); CFRelease(totalString);
-	
-	CGRect gradeRect = CGRectMake(rect.origin.x, 0.f, zoneWidth2, rect.size.height);
-	CGRect weightRect = CGRectMake(rect.origin.x + zoneWidth2, 0.f, zoneWidth2, rect.size.height);
-	CGRect averageRect = CGRectMake(rect.origin.x + zoneWidth2*2, 0.f, zoneWidth2, rect.size.height);
-	CGRect totalRect = CGRectMake(rect.origin.x + zoneWidth2*3, 0.f, zoneWidth2, rect.size.height);
-
-	DrawFramesetter(context, gradeFramesetter, gradeRect); CFRelease(gradeFramesetter);
-	DrawFramesetter(context, weightFramesetter, weightRect); CFRelease(weightFramesetter);
-	DrawFramesetter(context, averageFramesetter, averageRect); CFRelease(averageFramesetter);
-	DrawFramesetter(context, totalFramesetter, totalRect); CFRelease(totalFramesetter);
-}
-@end
-
-@implementation SubjectTableViewCellContentView
-- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
-	CGFloat zoneWidth2 = rect.size.width / 5;
-	
-	NSString *gradeString__ = ![[self container] hasGrade] ? @"N/A" : [[self container] grade];
-	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
-	CFAttributedStringRef valueString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Valor\n" stringByAppendingString:[[self container] value]], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange valueContentRange = CFRangeMake(5, CFAttributedStringGetLength(valueString_)-5);
-	NSString *percentString__ = ![[self container] hasGrade] ? @"N/A" : [[self container] gradePercentage];
-	CFAttributedStringRef percentString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"%\n" stringByAppendingString:percentString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange percentContentRange = CFRangeMake(2, CFAttributedStringGetLength(percentString_)-2);
-	NSString *averageString__ = ![[self container] hasAverage] ? @"N/A" : [[self container] average];
-	CFAttributedStringRef averageString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Média\n" stringByAppendingString:averageString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange averageContentRange = CFRangeMake(5, CFAttributedStringGetLength(averageString_)-5);
-	NSString *totalString__ = ![[self container] hasGrade] ? @"N/A" : [NSString stringWithFormat:@"%.2f", [[self container] gradeInSupercontainer]];
-	CFAttributedStringRef totalString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Total\n" stringByAppendingString:totalString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange totalContentRange = CFRangeMake(5, CFAttributedStringGetLength(totalString_)-5);
-
-	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
-	CFAttributedStringRemoveAttribute(gradeString, gradeContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(gradeString, gradeContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(gradeString_);
-
-	CFMutableAttributedStringRef valueString = CFAttributedStringCreateMutableCopy(NULL, 0, valueString_);
-	CFAttributedStringRemoveAttribute(valueString, valueContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(valueString, valueContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(valueString_);
-
-	CFMutableAttributedStringRef percentString = CFAttributedStringCreateMutableCopy(NULL, 0, percentString_);
-	CFAttributedStringRemoveAttribute(percentString, percentContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(percentString, percentContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(percentString_);
-	
-	CFMutableAttributedStringRef averageString = CFAttributedStringCreateMutableCopy(NULL, 0, averageString_);
-	CFAttributedStringRemoveAttribute(averageString, averageContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(averageString, averageContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(averageString_);
-
-	CFMutableAttributedStringRef totalString = CFAttributedStringCreateMutableCopy(NULL, 0, totalString_);
-	CFAttributedStringRemoveAttribute(totalString, totalContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(totalString, totalContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(totalString_);
-	
-	CTFramesetterRef gradeFramesetter = CTFramesetterCreateWithAttributedString(gradeString); CFRelease(gradeString);
-	CTFramesetterRef valueFramesetter = CTFramesetterCreateWithAttributedString(valueString); CFRelease(valueString);
-	CTFramesetterRef percentFramesetter = CTFramesetterCreateWithAttributedString(percentString); CFRelease(percentString);
-	CTFramesetterRef averageFramesetter = CTFramesetterCreateWithAttributedString(averageString); CFRelease(averageString);
-	CTFramesetterRef totalFramesetter = CTFramesetterCreateWithAttributedString(totalString); CFRelease(totalString);
-	
-	CGRect gradeRect = CGRectMake(rect.origin.x, 0.f, zoneWidth2, rect.size.height);
-	CGRect valueRect = CGRectMake(rect.origin.x + zoneWidth2, 0.f, zoneWidth2, rect.size.height);
-	CGRect percentRect = CGRectMake(rect.origin.x + zoneWidth2*2, 0.f, zoneWidth2, rect.size.height);
-	CGRect averageRect = CGRectMake(rect.origin.x + zoneWidth2*3, 0.f, zoneWidth2, rect.size.height);
-	CGRect totalRect = CGRectMake(rect.origin.x + zoneWidth2*4, 0.f, zoneWidth2, rect.size.height);
-
-	DrawFramesetter(context, gradeFramesetter, gradeRect); CFRelease(gradeFramesetter);
-	DrawFramesetter(context, valueFramesetter, valueRect); CFRelease(valueFramesetter);
-	DrawFramesetter(context, percentFramesetter, percentRect); CFRelease(percentFramesetter);
-	DrawFramesetter(context, averageFramesetter, averageRect); CFRelease(averageFramesetter);
-	DrawFramesetter(context, totalFramesetter, totalRect); CFRelease(totalFramesetter);
-}
-@end
-
-#define TEXTFIELD_CENTER_HEIGHT_FIX 2.f
-@implementation SubjectBonusTableHeaderView
-- (id)initWithFrame:(CGRect)rect {
-	if ((self = [super initWithFrame:rect])) {
-		NSLog(@"VIEW RECT %@", NSStringFromCGRect(rect));
-
-		$textField = [[UITextField alloc] initWithFrame:CGRectMake(rect.size.width/2 + rect.size.width/4, rect.size.height/2 - TEXTFIELD_CENTER_HEIGHT_FIX, rect.size.width/4, rect.size.height/2)];
-		[$textField setPlaceholder:@"1.00"];
-		[$textField setFont:[UIFont boldSystemFontOfSize:pxtopt(rect.size.height/2)]];
-		[$textField setTextAlignment:NSTextAlignmentCenter];
-		[$textField setContentVerticalAlignment:UIControlContentVerticalAlignmentCenter];
-		[$textField setDelegate:self];
-		[self addSubview:$textField];
-	}
-	
-	return self;
-}
-
-- (void)setContainer:(GradeContainer *)container {
-	// FIXME!!!!! Instead of using name use the id (which would be like Atv1, Atv2...)
-	// NOTE: We call NSUserDefaults and not [[self container] value] because value has 1.0 as value so we couldn't tell whether it was real or the placeholder.
-	NSString *text = [[NSUserDefaults standardUserDefaults] stringForKey:[[NSString stringWithFormat:@"BonusValue:%@:%@", [[container superContainer] name], [container name]] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale]];
-	NSLog(@"key ended up as %@, and text as %@", [[NSString stringWithFormat:@"BonusValue:%@:%@", [[container superContainer] name], [container name]] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale], text);
-	[$textField setText:[text length] > 0 ? text : nil];
-        
-        [super setContainer:container];
-}
-
-- (UITableView *)$tableView {
-	UIView *tableView = self;
-	while (![tableView isKindOfClass:[UITableView class]]) tableView = [tableView superview];
-
-	return (UITableView *)tableView;
-}
-
-- (void)textFieldDidBeginEditing:(UITextField *)textField {
-	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
-	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];		
-}
-
-- (void)keyboardWillShow:(NSNotification *)notification {
-	UITableView *tableView = [self $tableView];
-
-	CGFloat height = [[[notification userInfo] objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue].size.height;
-	NSTimeInterval duration = [[[notification userInfo] objectForKey:UIKeyboardAnimationDurationUserInfoKey] doubleValue];
-	
-	UIEdgeInsets edgeInsets = UIEdgeInsetsMake(0, 0, height - HEIGHT_OF_TABBAR, 0);
-	[UIView animateWithDuration:duration animations:^{
-		[tableView setContentInset:edgeInsets];
-		[tableView setScrollIndicatorInsets:edgeInsets];
-		[tableView scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:NSNotFound inSection:[[self container] section]] atScrollPosition:UITableViewScrollPositionTop animated:YES];
-	}];
-}
-
-- (void)keyboardWillHide:(NSNotification *)notification {
-	UITableView *tableView = [self $tableView];
-	
-        NSTimeInterval duration = [[[notification userInfo] objectForKey:UIKeyboardAnimationDurationUserInfoKey] doubleValue];
-
-	[UIView animateWithDuration:duration animations:^{
-		[tableView setContentInset:UIEdgeInsetsZero];
-		[tableView setScrollIndicatorInsets:UIEdgeInsetsZero];
-	}];
-}
-
-- (void)textFieldDidEndEditing:(UITextField *)textField {
-	NSString *text = [[textField text] americanFloat];
-	if ([text floatValue] == 0 || [text floatValue] < [[[self container] grade] floatValue]) text = [NSString string];
-	else {
-		text = [NSString stringWithFormat:@"%.2f", [text floatValue]];
-
-		[[self container] setValue:text];
-
-		UIView *subjectView = self;
-		while (![subjectView isKindOfClass:[GradesSubjectView class]]) subjectView = [subjectView superview];
-		[(PieChartView *)[subjectView viewWithTag:500] updateBonusSliders];
-	}
-	
-	[textField setText:[text isEqualToString:[NSString string]] ? nil : text];
-	[[NSUserDefaults standardUserDefaults] setObject:text forKey:[[NSString stringWithFormat:@"BonusValue:%@:%@", [[[self container] superContainer] name], [[self container] name]] stringByFoldingWithOptions:NSDiacriticInsensitiveSearch locale:AmericanLocale]];
-	[[NSUserDefaults standardUserDefaults] synchronize];
-	
-	[[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillShowNotification object:nil];
-	[[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillHideNotification object:nil];
-}
-
-- (BOOL)textFieldShouldReturn:(UITextField *)textField {
-	[textField resignFirstResponder];
-	return YES;
-}
-
-- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
-	CGFloat zoneWidth2 = rect.size.width / 2;
-	NSLog(@"zoneWidth2 = %f; rect.size.width = %f", zoneWidth2, rect.size.width);
-	
-	NSString *gradeString__ = [[[self container] grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [[self container] grade];
-	CFAttributedStringRef gradeString_ = CreateBaseAttributedString(dataFont, textColor, (CFStringRef)[@"Nota\n" stringByAppendingString:gradeString__], NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-	CFRange gradeContentRange = CFRangeMake(5, CFAttributedStringGetLength(gradeString_)-5);
-	
-	CFMutableAttributedStringRef gradeString = CFAttributedStringCreateMutableCopy(NULL, 0, gradeString_);
-	CFAttributedStringRemoveAttribute(gradeString, gradeContentRange, kCTFontAttributeName);
-	CFAttributedStringSetAttribute(gradeString, gradeContentRange, kCTFontAttributeName, boldFont);
-	CFRelease(gradeString_);
-	
-	CTFramesetterRef gradeFramesetter = CTFramesetterCreateWithAttributedString(gradeString); CFRelease(gradeString);
-	CTFramesetterRef valueFramesetter = CreateFramesetter(dataFont, textColor, CFSTR("Valor\n"), NO, kCTLineBreakByTruncatingTail, kCTCenterTextAlignment);
-
-	DrawFramesetter(context, gradeFramesetter, CGRectMake(rect.origin.x, 0.f, zoneWidth2, rect.size.height)); CFRelease(gradeFramesetter);
-	DrawFramesetter(context, valueFramesetter, CGRectMake(rect.origin.x + zoneWidth2, 0.f, zoneWidth2, rect.size.height)); CFRelease(valueFramesetter);
-}
-@end
-
-@implementation TestView
-@synthesize container;
-
-- (void)drawRect:(CGRect)rect {
-	//NSLog(@"-[TestView drawRect:%@] with %@", NSStringFromCGRect(rect), NSStringFromClass([self class]));
-	
-	CGContextRef context = UIGraphicsGetCurrentContext();
-	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
-	CGContextTranslateCTM(context, 0, self.bounds.size.height);
-	CGContextScaleCTM(context, 1.0, -1.0);
-	
-	// FIXME: hacking my own apis; not a good sign.
-	bool isEven = [container indexAtSupercontainer] % 2 == 0;
-	if (rect.size.height != 44.f) isEven = !isEven;
-
-	[(isEven ? UIColorFromHexWithAlpha(0xfafafa, 1.f) : [UIColor whiteColor]) setFill];
-	CGContextFillRect(context, rect);
-	
-	CGFloat zoneHeight = rect.size.height/2;
-	CGFloat zoneWidth = [container isBonus] || ![container showsGraph] ? rect.size.width/2 : rect.size.width/3;
-	
-	// ZONE 1
-	UIColor *colorForGrade = [[container grade] isEqualToString:@"$NoGrade"] || [container isBonus] ? UIColorFromHexWithAlpha(0x708090, 1.f) : ColorForGrade([container $gradePercentage]/10.f);
-	[colorForGrade setFill];
-	CGRect circleRect = CGRectMake(8.f, zoneHeight/2, zoneHeight, zoneHeight);
-	CGContextFillEllipseInRect(context, circleRect);
-	
-	CGColorRef textColor = [[UIColor blackColor] CGColor];
-
-	NSString *systemFont = [[UIFont systemFontOfSize:1.f] fontName];
-	CTFontRef dataFont = CTFontCreateWithName((CFStringRef)systemFont, pxtopt(zoneHeight), NULL);
-	CTFontRef boldFont = CTFontCreateCopyWithSymbolicTraits(dataFont, pxtopt(zoneHeight), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
-	
-	NSString *gradeString = [[container grade] isEqualToString:@"$NoGrade"] ? @"N/A" : [container grade];
-	CTFramesetterRef fpGradeFramesetter = CreateFramesetter(boldFont, textColor, (CFStringRef)gradeString, NO, kCTLineBreakByTruncatingTail);
-	CGSize gradeRequirement = CTFramesetterSuggestFrameSizeWithConstraints(fpGradeFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL);
-	gradeRequirement.width += 5.f;
-
-	CTFramesetterRef examFramesetter = CreateFramesetter(dataFont, textColor, (CFStringRef)[container name], NO, kCTLineBreakByTruncatingTail);
-	CGFloat examWidth = circleRect.origin.x + circleRect.size.width + 8.f;
-	CGRect examRect = CGRectMake(examWidth, zoneHeight/2, zoneWidth - examWidth - gradeRequirement.width, zoneHeight);
-	DrawFramesetter(context, examFramesetter, examRect);
-	CFRelease(examFramesetter);
-	
-	DrawFramesetter(context, fpGradeFramesetter, CGRectMake(examRect.origin.x + examRect.size.width, zoneHeight/2, gradeRequirement.width, zoneHeight));
-	CFRelease(fpGradeFramesetter);
-
-	// ZONE 2
-	[self drawDataZoneRect:CGRectMake(zoneWidth, 0.f, zoneWidth, rect.size.height) textColor:textColor dataFont:dataFont boldFont:boldFont inContext:context];
-	
-	if ([container isBonus] || ![container showsGraph]) {
-		CFRelease(dataFont);
-		CFRelease(boldFont);
-		
-		return;
-	}
-
-	// ZONE 3
-	CTFramesetterRef gradeLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Nota"), NO, kCTLineBreakByTruncatingTail);
-	CTFramesetterRef averageLabelFramesetter = CreateFramesetter(boldFont, textColor, CFSTR("Média"), NO, kCTLineBreakByTruncatingTail);
-	
-	CGSize averageSize = CTFramesetterSuggestFrameSizeWithConstraints(averageLabelFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL);
-	averageSize.width += 5.f;
-	DrawFramesetter(context, gradeLabelFramesetter, CGRectMake(zoneWidth * 2 + 5.f, zoneHeight, averageSize.width, zoneHeight)); CFRelease(gradeLabelFramesetter);
-	DrawFramesetter(context, averageLabelFramesetter, CGRectMake(zoneWidth * 2 + 5.f, 0.f, averageSize.width, zoneHeight)); CFRelease(averageLabelFramesetter);
-	
-	UIColor *emptyColor = UIColorFromHexWithAlpha(0xC0C0C0, 1.f);
-	[emptyColor setFill];
-	
-	CGFloat baseGraphWidth = zoneWidth - averageSize.width - 10.f;
-	CGRect baseGraphRect = CGRectMake(zoneWidth * 2 + averageSize.width + 5.f, 0.f, baseGraphWidth, zoneHeight - 4.f);
-
-	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 2.f}, baseGraphRect.size});
-	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 6.f + baseGraphRect.size.height}, baseGraphRect.size});
-
-	CGFloat gradeBarWidth = [[container grade] floatValue] / [[container value] floatValue] * baseGraphWidth;
-	CGFloat averageBarWidth = [[container average] floatValue] / [[container value] floatValue] * baseGraphWidth;
-
-	[ColorForGrade([[container average] floatValue], NO) setFill];
-	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 2.f}, {averageBarWidth, baseGraphRect.size.height}});
-	[ColorForGrade([[container grade] floatValue]) setFill];
-	CGContextFillRect(context, (CGRect){{baseGraphRect.origin.x, 6.f + baseGraphRect.size.height}, {gradeBarWidth, baseGraphRect.size.height}});
-	
-	CTFontRef smallerFont = CTFontCreateCopyWithSymbolicTraits(dataFont, pxtopt(baseGraphRect.size.height), NULL, kCTFontBoldTrait, kCTFontBoldTrait);
-
-	CTFramesetterRef gradeBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)gradeString, NO, kCTLineBreakByTruncatingTail);
-	CGFloat requiredWidth = CTFramesetterSuggestFrameSizeWithConstraints(gradeBarFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL).width;
-	CGFloat xOrigin = baseGraphRect.origin.x + gradeBarWidth - requiredWidth - 3.f;
-	CGRect gradeBarRect = CGRectMake(xOrigin > baseGraphRect.origin.x ? xOrigin : baseGraphRect.origin.x+2.f, 6.f + baseGraphRect.size.height, requiredWidth, baseGraphRect.size.height);
-	DrawFramesetter(context, gradeBarFramesetter, gradeBarRect); CFRelease(gradeBarFramesetter);
-
-	NSString *averageString = [[container average] isEqualToString:@"$NoGrade"] ? @"N/A" : [container average];
-	CTFramesetterRef averageBarFramesetter = CreateFramesetter(smallerFont, [[UIColor whiteColor] CGColor], (CFStringRef)averageString, NO, kCTLineBreakByTruncatingTail);
-	CGFloat requiredWidthAvg = CTFramesetterSuggestFrameSizeWithConstraints(averageBarFramesetter, CFRangeMake(0, 0), NULL, CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX), NULL).width;
-	CGFloat xOriginAvg = baseGraphRect.origin.x + averageBarWidth - requiredWidth - 3.f;
-	CGRect averageBarRect = CGRectMake(xOriginAvg > baseGraphRect.origin.x ? xOriginAvg : baseGraphRect.origin.x+2.f, 2.f, requiredWidthAvg, baseGraphRect.size.height);
-	DrawFramesetter(context, averageBarFramesetter, averageBarRect); CFRelease(averageBarFramesetter);
-	
-	CFRelease(smallerFont);
-	CFRelease(dataFont);
-	CFRelease(boldFont);
-}
-
-- (void)drawDataZoneRect:(CGRect)rect textColor:(CGColorRef)textColor dataFont:(CTFontRef)dataFont boldFont:(CTFontRef)boldFont inContext:(CGContextRef)context {
-	return;
-}
-
-- (void)dealloc {
-	NSLog(@"TestView dealloc");
-
-	[container release];
-	[super dealloc];
-}
-@end
-
-@implementation SubjectView
-- (id)initWithFrame:(CGRect)frame container:(GradeContainer *)container {
-	if ((self = [super initWithFrame:frame])) {
-		$container = [container retain];
-		[self setBackgroundColor:[UIColor whiteColor]];
-
-		NoButtonDelayTableView *tableView = [[NoButtonDelayTableView alloc] initWithFrame:[self bounds] style:UITableViewStylePlain];
-		[tableView setDataSource:self];
-		[tableView setDelegate:self];
-		[tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
-		[tableView setTag:77];
-		[self addSubview:tableView];
-		[tableView release];
-		
-		// FIXME: Use CoreText instead of attributed UILabels.
-		// (I'm asking myself why I did those in the first place.)
-		UIView *tableHeaderView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 54.f)];
-		CGFloat halfHeight = [tableHeaderView bounds].size.height/2;
-		
-		UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f)];
-		[nameLabel setBackgroundColor:[UIColor clearColor]];
-		[nameLabel setTextColor:[UIColor blackColor]];
-		[nameLabel setFont:[UIFont boldSystemFontOfSize:pxtopt(halfHeight)]];
-		[nameLabel setNumberOfLines:0];
-		[nameLabel setText:[container name]];
-		[tableHeaderView addSubview:nameLabel];
-		/*CGFloat width = [nameLabel bounds].size.width;
-		[nameLabel sizeToFit];
-		[nameLabel setFrame:CGRectMake(nameLabel.bounds.origin.x, nameLabel.bounds.origin.y, width, nameLabel.bounds.size.height)];*/
-		[nameLabel release];
-
-		if (![[container grade] isEqualToString:@"$NoGrade"]) {
-			[self setupTableTopGradesWithTableHeaderView:tableHeaderView];
-		}
-		
-		[tableView setTableHeaderView:tableHeaderView];
-		[tableHeaderView release];
-		
-		[self setupTableFooterView];
-	}
-
-	return self;
-}
-
-- (void)setupTableFooterView {
-	return;
-}
-
-- (void)setupTableTopGradesWithTableHeaderView:(UIView *)tableHeaderView {
-	return;
-}
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return [[$container subGradeContainers] count] + [[$container subBonusContainers] count];
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	if (section >= [[$container subGradeContainers] count]) return 0;
-	return [[[[$container subGradeContainers] objectAtIndex:section] subGradeContainers] count];
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-	UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PortoAppSubjectViewTableViewCell"];
-	if (cell == nil) {
-		cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"PortoAppSubjectViewTableViewCell"] autorelease];
-		
-		// FIXME: Remove this constant 32.f, and 55.
-		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, 32.f)];
-		[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * 3, scrollView.bounds.size.height)];
-		[scrollView setScrollsToTop:NO];
-		[scrollView setShowsHorizontalScrollIndicator:NO];
-		[scrollView setPagingEnabled:YES];
-		[scrollView setTag:55];
-		
-		SubjectTableViewCellContentView *contentView = [[SubjectTableViewCellContentView alloc] initWithFrame:CGRectMake(0.f, 0.f, [scrollView contentSize].width, [scrollView contentSize].height)];
-		[scrollView addSubview:contentView];
-		[contentView release];
-
-		[[cell contentView] addSubview:scrollView];
-		[scrollView release];
-	}
-	
-	SubjectTableViewCellContentView *contentView_ = (SubjectTableViewCellContentView *)[[[[cell contentView] viewWithTag:55] subviews] objectAtIndex:0];
-	[contentView_ setContainer:[[[[$container subGradeContainers] objectAtIndex:[indexPath section]] subGradeContainers] objectAtIndex:[indexPath row]]];
-
-	return cell;
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	return 32.f;
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-	return 44.f;
-}
-
-// TODO: UITableViewHeaderFooterView is iOS6+. I dislike having to rely on apis > iOS 5. :(
-- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-	BOOL isBonus = section >= [[$container subGradeContainers] count];
-	BOOL notShowsGraph = !isBonus && ![[[$container subGradeContainers] objectAtIndex:section] showsGraph];
-
-	NSString *identifier = isBonus ? @"PortoAppSubjectViewTableHeaderViewBonus" : @"PortoAppSubjectViewTableHeaderViewGrade";
-
-	UITableViewHeaderFooterView *headerView = [tableView dequeueReusableHeaderFooterViewWithIdentifier:identifier];
-	if (headerView == nil) {
-		headerView = [[[UITableViewHeaderFooterView alloc] initWithReuseIdentifier:identifier] autorelease];
-
-		UIScrollView *scrollView = [[UIScrollView alloc] initWithFrame:CGRectMake(0.f, 0.f, tableView.bounds.size.width, 44.f)];
-		[scrollView setContentSize:CGSizeMake(scrollView.bounds.size.width * (isBonus || notShowsGraph ? 2 : 3), scrollView.bounds.size.height)];
-		[scrollView setScrollsToTop:NO]; 
-		[scrollView setShowsHorizontalScrollIndicator:NO];
-		[scrollView setPagingEnabled:YES];
-		[scrollView setTag:5];
-
-		Class testViewClass = isBonus ? [SubjectBonusTableHeaderView class] : [SubjectTableHeaderView class];
-		CGRect frame = CGRectMake(0.f, 0.f, [scrollView contentSize].width, [scrollView contentSize].height);
-		TestView *testView = [[testViewClass alloc] initWithFrame:frame];
-		[testView setTag:6];
-		[scrollView addSubview:testView];
-		[testView release];
-		
-		[[headerView contentView] addSubview:scrollView];
-		[scrollView release];
-	}
-	
-	GradeContainer *container = isBonus ? [[$container subBonusContainers] objectAtIndex:section - [[$container subGradeContainers] count]] : [[$container subGradeContainers] objectAtIndex:section];
-	[(TestView *)[[headerView viewWithTag:5] viewWithTag:6] setContainer:container];
-	[(UIScrollView *)[headerView viewWithTag:5] setContentOffset:CGPointMake(0.f, 0.f)];
-	[[[headerView viewWithTag:5] viewWithTag:6] setNeedsDisplay];
-	
-	return headerView;
-}
-
-- (void)dealloc {
-	NSLog(@"SubjectView dealloc");
-
-	[$container release];
-	[super dealloc];
-}
-@end
-
-@implementation GradesSubjectView
-- (void)setupTableTopGradesWithTableHeaderView:(UIView *)tableHeaderView {
-	NSString *gradeTitle = @"Nota: ";
-	NSString *averageTitle = @"Média: ";
-
-	NSMutableAttributedString *gradeAttributedString = [[NSMutableAttributedString alloc] initWithString:[gradeTitle stringByAppendingString:[$container grade]]];
-	[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [gradeTitle length])];
-	[gradeAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([gradeTitle length], [gradeAttributedString length]-[gradeTitle length])];
-	
-	NSMutableAttributedString *averageAttributedString = [[NSMutableAttributedString alloc] initWithString:[averageTitle stringByAppendingString:[$container average]]];
-	[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [averageTitle length])];
-	[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([averageTitle length], [averageAttributedString length]-[averageTitle length])];
-
-	CGRect nameLabelFrame = CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f);
-        UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 0.f, [self bounds].size.width/3, 27.f)];
-	[gradeLabel setBackgroundColor:[UIColor clearColor]];
-	[gradeLabel setTextColor:[UIColor blackColor]];
-	[gradeLabel setAttributedText:gradeAttributedString];
-	[gradeAttributedString release];
-	[tableHeaderView addSubview:gradeLabel];
-	[gradeLabel release];
-
-	UILabel *averageLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 22.f, [self bounds].size.width/3, 27.f)];
-	[averageLabel setBackgroundColor:[UIColor clearColor]];
-	[averageLabel setTextColor:[UIColor blackColor]];
-	[averageLabel setAttributedText:averageAttributedString];
-	[averageAttributedString release];
-	[tableHeaderView addSubview:averageLabel];
-	[averageLabel release];
-}
-
-- (void)setupTableFooterView {
-	UITableView *tableView = (UITableView *)[self viewWithTag:77];
-	
-	NSMutableArray *pieces = [NSMutableArray array];
-	for (GradeContainer *subContainer in [$container subGradeContainers]) {
-		PieChartPiece *piece = [[[PieChartPiece alloc] init] autorelease];
-		[piece setPercentage:[subContainer gradeInSupercontainer]*10.f];
-		[piece setContainer:subContainer];
-		[piece setColor:RandomColorHex()];
-		[piece setText:[subContainer name]];
-		[piece setIsBonus:NO];
-
-		[pieces addObject:piece];
-	}
-	for (GradeContainer *bonusContainer in [$container subBonusContainers]) {
-		PieChartPiece *piece = [[[PieChartPiece alloc] init] autorelease];
-		[piece setPercentage:[[bonusContainer grade] floatValue] * 10.f];
-		[piece setContainer:bonusContainer];
-		[piece setColor:RandomColorHex()];
-		[piece setText:[bonusContainer name]];
-		[piece setIsBonus:YES];
-
-		[pieces addObject:piece];
-	}
-	
-	PieChartPiece *emptyPiece = [[[PieChartPiece alloc] init] autorelease];
-	[emptyPiece setPercentage:0.f];
-	[emptyPiece setColor:0x000000];
-	[emptyPiece setText:@"Empty"];
-	
-	CGFloat rowsHeight = [pieces count] * [PieChartView rowHeight] + ([PieChartView extraHeight] + kPieChartViewInset*2);
-	CGFloat minHeight = [PieChartView minHeightForRadius:55.f];
-	PieChartView *mainPieChart = [[PieChartView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, rowsHeight < minHeight ? minHeight : rowsHeight) pieces:pieces count:[[$container subGradeContainers] count] radius:55.f emptyPiece:emptyPiece];
-	[mainPieChart setTag:500];
-	[mainPieChart setDelegate:self];
-	
-	UIView *footerView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, [mainPieChart bounds].size.height)];
-	[footerView addSubview:mainPieChart];
-	[mainPieChart release];
-
-	[tableView setTableFooterView:footerView];
-	[footerView release];
-}
-@end
-
 // TODO Add a page control.
 @implementation GradesListViewController
 @synthesize year = $year, period = $period;
@@ -5489,6 +5501,8 @@ you will still get a valid token for name "Funcionário".
 	if ((self = [super initWithIdentifier:identifier cacheIdentifier:cacheIdentifier])) {
 		$postKeys = [dict retain];
 		$cookies = [cookies retain];
+
+		$rootContainer = nil;
 	}
         
         return self;
@@ -5501,6 +5515,13 @@ you will still get a valid token for name "Funcionário".
 
 // FIXME: Implement showing frequency in the cell instead of an average N/A; aka stop being lazy and code a special Zeugnis SubjectView cell.
 - (void)reloadData {
+	if ($rootContainer != nil) {
+		[$rootContainer release];
+	}
+	[self $performUIBlock:^{
+		[[$contentView subviews] makeObjectsPerformSelector:@selector(removeFromSuperview)];
+	}];
+
 	NSData *data;
 	IfNotCached {
 		SessionController *sessionController = [SessionController sharedInstance];
@@ -6345,7 +6366,7 @@ static void DebugInit() {
 	
 	GradesViewController *gradesViewController = [[[GradesViewController alloc] initWithIdentifier:@"grades"] autorelease];
 	UINavigationController *gradesNavController = [[[UINavigationController alloc] initWithRootViewController:gradesViewController] autorelease];
-	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:_UIImageWithName(@"UITabBarMostViewedTemplate.png")/*[UIImage imageNamed:@"notas_tab.png"]*/ tag:0] autorelease]];
+	[gradesNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notas" image:/*_UIImageWithName(@"UITabBarMostViewedTemplate.png")*/[UIImage imageNamed:@"grade_tab.png"] tag:0] autorelease]];
 	
 	PapersViewController *papersViewController = [[[PapersViewController alloc] initWithIdentifier:@"papers"] autorelease];
 	UINavigationController *papersNavController = [[[UINavigationController alloc] initWithRootViewController:papersViewController] autorelease];

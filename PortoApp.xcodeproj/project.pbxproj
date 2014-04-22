@@ -23,6 +23,8 @@
 		ED757317189DC07100CCACC9 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED757316189DC07100CCACC9 /* SystemConfiguration.framework */; };
 		ED80CC2918958C0B0078D82B /* news_base.html in Resources */ = {isa = PBXBuildFile; fileRef = ED80CC2818958C0B0078D82B /* news_base.html */; };
 		ED8DD83417EA2B0800864BFA /* CoreText.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED8DD83317EA2B0800864BFA /* CoreText.framework */; };
+		ED9274071905BA380092E567 /* grade_tab@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ED9274061905BA380092E567 /* grade_tab@2x.png */; };
+		ED9274091905BB3F0092E567 /* grade_tab.png in Resources */ = {isa = PBXBuildFile; fileRef = ED9274081905BB3F0092E567 /* grade_tab.png */; };
 		EDB4080517E25F7500521640 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080417E25F7500521640 /* UIKit.framework */; };
 		EDB4080717E25F7500521640 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080617E25F7500521640 /* Foundation.framework */; };
 		EDB4080917E25F7500521640 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080817E25F7500521640 /* CoreGraphics.framework */; };
@@ -54,6 +56,9 @@
 		ED757316189DC07100CCACC9 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 		ED80CC2818958C0B0078D82B /* news_base.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = news_base.html; sourceTree = "<group>"; };
 		ED8DD83317EA2B0800864BFA /* CoreText.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreText.framework; path = System/Library/Frameworks/CoreText.framework; sourceTree = SDKROOT; };
+		ED9274061905BA380092E567 /* grade_tab@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "grade_tab@2x.png"; sourceTree = "<group>"; };
+		ED9274081905BB3F0092E567 /* grade_tab.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = grade_tab.png; sourceTree = "<group>"; };
+		ED92740A1905D0AB0092E567 /* PortoApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PortoApp.entitlements; sourceTree = "<group>"; };
 		EDB4080117E25F7500521640 /* PortoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PortoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EDB4080417E25F7500521640 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		EDB4080617E25F7500521640 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -98,6 +103,8 @@
 				EDB4081817E25F7500521640 /* Default@2x.png */,
 				ED0AC2AC18A9936600277CAB /* news_tab.png */,
 				ED0AC2AA18A98F6000277CAB /* news_tab@2x.png */,
+				ED9274081905BB3F0092E567 /* grade_tab.png */,
+				ED9274061905BA380092E567 /* grade_tab@2x.png */,
 			);
 			name = "Tab Bar";
 			sourceTree = "<group>";
@@ -164,6 +171,7 @@
 		EDB4080A17E25F7500521640 /* PortoApp */ = {
 			isa = PBXGroup;
 			children = (
+				ED92740A1905D0AB0092E567 /* PortoApp.entitlements */,
 				EDB4080B17E25F7500521640 /* Supporting Files */,
 			);
 			path = PortoApp;
@@ -215,6 +223,16 @@
 			attributes = {
 				LastUpgradeCheck = 0460;
 				ORGANIZATIONNAME = "Daniel Ferreira";
+				TargetAttributes = {
+					EDB4080017E25F7500521640 = {
+						DevelopmentTeam = FJ5KB9MX33;
+						SystemCapabilities = {
+							com.apple.Keychain = {
+								enabled = 0;
+							};
+						};
+					};
+				};
 			};
 			buildConfigurationList = EDB407FC17E25F7500521640 /* Build configuration list for PBXProject "PortoApp" */;
 			compatibilityVersion = "Xcode 3.2";
@@ -248,10 +266,12 @@
 				EDB4081917E25F7500521640 /* Default@2x.png in Resources */,
 				EDB4081B17E25F7500521640 /* Default-568h@2x.png in Resources */,
 				ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */,
+				ED9274091905BB3F0092E567 /* grade_tab.png in Resources */,
 				ED2991541899E7DA00A89AAB /* github-buttons.html in Resources */,
 				ED0CCA0918E50D110055C955 /* icon-120.png in Resources */,
 				ED0CCA0818E50D110055C955 /* icon-80.png in Resources */,
 				ED0CCA0A18E50D110055C955 /* icon-small.png in Resources */,
+				ED9274071905BA380092E567 /* grade_tab@2x.png in Resources */,
 				ED0AC2AD18A9936600277CAB /* news_tab.png in Resources */,
 				ED80CC2918958C0B0078D82B /* news_base.html in Resources */,
 				ED6751631899AFD200E6FAEF /* theiostream.html in Resources */,
@@ -272,7 +292,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    cp -r ${APP} /Users/BobNelson/Documents/Projects/PortoApp/Releases\n\n    /usr/bin/ldid -S/Users/BobNelson/Documents/Projects/PortoApp/ent.xml ${APP}/PortoApp\n\n    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.100:/Applications/\n    sleep 5\n\n    # We only respring as a sign that the transfer worked.\n    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.100 \"killall -9 backboardd\"\nfi";
+			shellScript = "\n#if [ \"${CONFIGURATION}\" = \"Release\" ]; then\n    APP=${BUILT_PRODUCTS_DIR}/PortoApp.app\n    cp -r ${APP} /Users/BobNelson/Documents/Projects/PortoApp/Releases\n\n#    /usr/bin/ldid -S/Users/BobNelson/Documents/Projects/PortoApp/ent.xml ${APP}/PortoApp\n\n#    /opt/local/bin/sshpass -p 'calibeta' scp -r ${APP} root@192.168.1.100:/Applications/\n#    sleep 5\n\n    # We only respring as a sign that the transfer worked.\n#    /opt/local/bin/sshpass -p 'calibeta' ssh root@192.168.1.100 \"killall -9 backboardd\"\n#fi";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -358,8 +378,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = YES;
-				CODE_SIGN_IDENTITY = "";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
 				HEADER_SEARCH_PATHS = (
@@ -367,9 +387,11 @@
 					"~/theos/include",
 				);
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 6.0;
 				OTHER_CFLAGS = "-I/usr/local/include";
 				OTHER_LDFLAGS = "-L/usr/local/lib";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE = "";
 				SDKROOT = iphoneos7.0;
 				WRAPPER_EXTENSION = app;
 			};
@@ -379,8 +401,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = YES;
-				CODE_SIGN_IDENTITY = "";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
 				HEADER_SEARCH_PATHS = (
@@ -388,9 +410,11 @@
 					"~/theos/include",
 				);
 				INFOPLIST_FILE = "PortoApp/PortoApp-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 6.0;
 				OTHER_CFLAGS = "-I/usr/local/include";
 				OTHER_LDFLAGS = "-L/usr/local/lib";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE = "";
 				SDKROOT = iphoneos7.0;
 				WRAPPER_EXTENSION = app;
 			};

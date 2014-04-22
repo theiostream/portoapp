@@ -719,6 +719,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (id)initWithFrame:(CGRect)frame pieces:(NSArray *)pieces count:(NSUInteger)count radius:(CGFloat)radius emptyPiece:(PieChartPiece *)empty;
 - (void)updateBonusSliders;
 - (void)didClosePickerSheet:(PickerActionSheet *)$pickerSheet withRowMap:(NSInteger *)$rowMap selectedContainerType:(NSInteger)$selectedContainerType;
+- (void)didCancelPickerSheet:(PickerActionSheet *)pickerSheet;
 @end
 
 @protocol PieChartViewDelegate <NSObject>
@@ -1010,16 +1011,20 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 @end
 
-@interface SubjectView : UIView <UITableViewDataSource, UITableViewDelegate, PieChartViewDelegate> {
+@interface SubjectView : UICollectionViewCell <UITableViewDataSource, UITableViewDelegate, PieChartViewDelegate> {
 	GradeContainer *$container;
+	NoButtonDelayTableView *$tableView;
+	UILabel *nameLabel;
 }
-- (id)initWithFrame:(CGRect)frame container:(GradeContainer *)container;
+@property (nonatomic, retain) GradeContainer *container;
+
+- (id)initWithFrame:(CGRect)frame;
 @end
 
 @interface GradesSubjectView : SubjectView
 @end
 
-@interface GradesListViewController : WebDataViewController {
+@interface GradesListViewController : WebDataViewController <UICollectionViewDataSource, UICollectionViewDelegate> {
 	NSString *$year;
 	NSString *$period;
 	NSString *$viewState;
@@ -1031,8 +1036,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (GradesListViewController *)initWithYear:(NSString *)year period:(NSString *)period viewState:(NSString *)viewState eventValidation:(NSString *)eventValidation;
 @property (nonatomic, retain) NSString *year;
 @property (nonatomic, retain) NSString *period;
-
-- (void)prepareContentView;
 @end
 
 @interface GradesLegacyListViewController : UIViewController {
@@ -1071,7 +1074,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @interface ZeugnisSubjectView : SubjectView
 @end
 
-@interface ZeugnisListViewController : WebDataViewController {
+@interface ZeugnisListViewController : WebDataViewController <UICollectionViewDataSource, UICollectionViewDelegate> {
 	NSDictionary *$postKeys;
 	NSArray *$cookies;
 	
@@ -1381,7 +1384,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	}];
 }
 
-- (void)$dismiss:(id)sender { [self dismiss]; }
+- (void)$dismiss:(id)sender { [[self delegate] didCancelPickerSheet:self]; }
 - (void)dismiss {
 	UIView *endarkenView = [[[UIApplication sharedApplication] keyWindow] viewWithTag:66];
 	
@@ -1390,9 +1393,8 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		[endarkenView setAlpha:0.f];
 	} completion:^(BOOL finished){
 		[endarkenView removeFromSuperview];
+		[self removeFromSuperview];
 	}];
-
-	[self removeFromSuperview];
 }
 
 - (void)dealloc {
@@ -1438,6 +1440,10 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)doneWithPickerView:(UISegmentedControl *)sender {
+	$rowMap[0] = 0;
+	$rowMap[1] = 0;
+	$selectedContainerType = 0;
+
 	[[self delegate] didClosePickerSheet:self withRowMap:$rowMap selectedContainerType:$selectedContainerType];
 }
 @end
@@ -1836,6 +1842,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
         [sheet release];
         
 	[self setUserInteractionEnabled:NO];
+	NSLog(@"SET NO USER INTERACTION ENABLED");
 }
 
 - (void)didClosePickerSheet:(PickerActionSheet *)$pickerSheet withRowMap:(NSInteger *)$rowMap selectedContainerType:(NSInteger)$selectedContainerType {
@@ -1855,10 +1862,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[container setSuperContainer:[[[$pieces objectAtIndex:0] container] superContainer]];
 	
 	[self $addContainer:container];
+}
 
-	$rowMap[0] = 0;
-	$rowMap[1] = 0;
-	$selectedContainerType = 0;
+- (void)didCancelPickerSheet:(PickerActionSheet *)pickerSheet {
+	[self setUserInteractionEnabled:YES];
+	[pickerSheet dismiss];
 }
 
 - (void)dealloc {
@@ -2393,47 +2401,58 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @end
 
 @implementation SubjectView
-- (id)initWithFrame:(CGRect)frame container:(GradeContainer *)container {
+@synthesize container = $container;
+
+- (id)initWithFrame:(CGRect)frame {
 	if ((self = [super initWithFrame:frame])) {
-		$container = [container retain];
+		$container = nil;
+
 		[self setBackgroundColor:[UIColor whiteColor]];
 
-		NoButtonDelayTableView *tableView = [[NoButtonDelayTableView alloc] initWithFrame:[self bounds] style:UITableViewStylePlain];
-		[tableView setDataSource:self];
-		[tableView setDelegate:self];
-		[tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
-		[tableView setTag:77];
-		[self addSubview:tableView];
-		[tableView release];
+		$tableView = [[NoButtonDelayTableView alloc] initWithFrame:[self bounds] style:UITableViewStylePlain];
+		[$tableView setDataSource:self];
+		[$tableView setDelegate:self];
+		[$tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
+		[$tableView setTag:77];
+		[self addSubview:$tableView];
 		
 		// FIXME: Use CoreText instead of attributed UILabels.
 		// (I'm asking myself why I did those in the first place.)
-		UIView *tableHeaderView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [tableView bounds].size.width, 54.f)];
+		UIView *tableHeaderView = [[UIView alloc] initWithFrame:CGRectMake(0.f, 0.f, [$tableView bounds].size.width, 54.f)];
 		CGFloat halfHeight = [tableHeaderView bounds].size.height/2;
 		
-		UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f)];
+		nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f)];
 		[nameLabel setBackgroundColor:[UIColor clearColor]];
 		[nameLabel setTextColor:[UIColor blackColor]];
 		[nameLabel setFont:[UIFont boldSystemFontOfSize:pxtopt(halfHeight)]];
 		[nameLabel setNumberOfLines:0];
-		[nameLabel setText:[container name]];
 		[tableHeaderView addSubview:nameLabel];
 		/*CGFloat width = [nameLabel bounds].size.width;
 		[nameLabel sizeToFit];
 		[nameLabel setFrame:CGRectMake(nameLabel.bounds.origin.x, nameLabel.bounds.origin.y, width, nameLabel.bounds.size.height)];*/
-		[nameLabel release];
 
-		if (![[container grade] isEqualToString:@"$NoGrade"]) {
+		/*if (![[container grade] isEqualToString:@"$NoGrade"]) {
 			[self setupTableTopGradesWithTableHeaderView:tableHeaderView];
-		}
+		}*/
 		
-		[tableView setTableHeaderView:tableHeaderView];
+		[$tableView setTableHeaderView:tableHeaderView];
 		[tableHeaderView release];
 		
-		[self setupTableFooterView];
+		//[self setupTableFooterView];
 	}
 
 	return self;
+}
+
+- (void)setContainer:(GradeContainer *)container {
+	if ($container) [$container release];
+	$container = [container retain];
+	
+        [nameLabel setText:[container name]];
+	[self setupTableFooterView];
+	[self setupTableTopGradesWithTableHeaderView:[$tableView tableHeaderView]];
+
+	[$tableView reloadData];
 }
 
 - (void)setupTableFooterView {
@@ -2529,11 +2548,35 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	NSLog(@"SubjectView dealloc");
 
 	[$container release];
+	[$tableView release];
+	[nameLabel release];
 	[super dealloc];
 }
 @end
 
-@implementation GradesSubjectView
+@implementation GradesSubjectView {
+	UILabel *gradeLabel;
+	UILabel *averageLabel;
+}
+
+- (id)initWithFrame:(CGRect)frame {
+	if ((self = [super initWithFrame:frame])) {
+		CGRect nameLabelFrame = CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f);
+		
+		gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 0.f, [self bounds].size.width/3, 27.f)];
+		[gradeLabel setBackgroundColor:[UIColor clearColor]];
+		[gradeLabel setTextColor:[UIColor blackColor]];
+		[[$tableView tableHeaderView] addSubview:gradeLabel];
+
+		averageLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 22.f, [self bounds].size.width/3, 27.f)];
+		[averageLabel setBackgroundColor:[UIColor clearColor]];
+		[averageLabel setTextColor:[UIColor blackColor]];
+		[[$tableView tableHeaderView] addSubview:averageLabel];
+	}
+
+	return self;
+}
+
 - (void)setupTableTopGradesWithTableHeaderView:(UIView *)tableHeaderView {
 	NSString *gradeTitle = @"Nota: ";
 	NSString *averageTitle = @"Média: ";
@@ -2546,26 +2589,16 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [averageTitle length])];
 	[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([averageTitle length], [averageAttributedString length]-[averageTitle length])];
 
-	CGRect nameLabelFrame = CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f);
-        UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 0.f, [self bounds].size.width/3, 27.f)];
-	[gradeLabel setBackgroundColor:[UIColor clearColor]];
-	[gradeLabel setTextColor:[UIColor blackColor]];
 	[gradeLabel setAttributedText:gradeAttributedString];
 	[gradeAttributedString release];
-	[tableHeaderView addSubview:gradeLabel];
-	[gradeLabel release];
 
-	UILabel *averageLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 22.f, [self bounds].size.width/3, 27.f)];
-	[averageLabel setBackgroundColor:[UIColor clearColor]];
-	[averageLabel setTextColor:[UIColor blackColor]];
 	[averageLabel setAttributedText:averageAttributedString];
 	[averageAttributedString release];
-	[tableHeaderView addSubview:averageLabel];
-	[averageLabel release];
 }
 
+// URGENT FIXME self-explanatory
 - (void)setupTableFooterView {
-	UITableView *tableView = (UITableView *)[self viewWithTag:77];
+	UITableView *tableView = $tableView;
 	
 	NSMutableArray *pieces = [NSMutableArray array];
 	for (GradeContainer *subContainer in [$container subGradeContainers]) {
@@ -2606,6 +2639,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 	[tableView setTableFooterView:footerView];
 	[footerView release];
+}
+
+- (void)dealloc {
+	[gradeLabel release];
+	[averageLabel release];
+
+	[super dealloc];
 }
 @end
 
@@ -2841,6 +2881,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 		case 4:
 			container = [self recoveredGrades]>kPortoAverage/10 ? $thirdContainer : $annualContainer;
 			break;
+                default:
+                        container = nil;
+                        break;
 	}
 
 	[cell setTopText:[container name]];
@@ -3668,6 +3711,7 @@ you will still get a valid token for name "Funcionário".
 	[cachedLabel setBackgroundColor:[UIColor clearColor]];
 	[cachedLabel setTextAlignment:NSTextAlignmentCenter];
 	[$cacheView addSubview:cachedLabel];
+        [cachedLabel release];
 	[[self view] addSubview:$cacheView];
 }
 
@@ -4438,6 +4482,8 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)setNewsImage:(UIImage *)img {
+	if ($newsImage) [$newsImage release];
+
 	[$imageView setImage:img];
 	$newsImage = [img retain]; // FIXME: Do we need this reference?
 }
@@ -4911,21 +4957,56 @@ you will still get a valid token for name "Funcionário".
 	NSLog(@"%@", $rootContainer); */
         
 	[self $performUIBlock:^{
-		[self prepareContentView];
+		[(UICollectionView *)$contentView reloadData];
 		[self displayContentView];
 	}];
 }
 
 - (void)loadContentView {
-	NoButtonDelayScrollView *scrollView = [[NoButtonDelayScrollView alloc] initWithFrame:[self contentViewFrame]];
+	/*NoButtonDelayScrollView *scrollView = [[NoButtonDelayScrollView alloc] initWithFrame:[self contentViewFrame]];
 	[scrollView setBackgroundColor:[UIColor whiteColor]];
 	[scrollView setScrollsToTop:NO];
 	[scrollView setPagingEnabled:YES];
 
-	$contentView = scrollView;
+	$contentView = scrollView;*/
+
+	UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
+	[layout setScrollDirection:UICollectionViewScrollDirectionHorizontal];
+
+	UICollectionView *collectionView = [[UICollectionView alloc] initWithFrame:[self contentViewFrame] collectionViewLayout:layout];
+	[layout release];
+
+	[collectionView setDataSource:self];
+	[collectionView setDelegate:self];
+	[collectionView registerClass:[GradesSubjectView class] forCellWithReuseIdentifier:@"GradeSubjectViewIdentifier"];
+	[collectionView setBackgroundColor:[UIColor whiteColor]];
+	[collectionView setScrollsToTop:NO];
+	[collectionView setPagingEnabled:YES];
+
+	$contentView = collectionView;
 }
 
-- (void)prepareContentView {
+- (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView {
+	if ($rootContainer == nil) return 0;
+	return [[$rootContainer subGradeContainers] count];
+}
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+	return 1;
+}
+
+- (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
+	return [collectionView bounds].size;
+}
+
+- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
+	GradesSubjectView *cell = (GradesSubjectView *)[collectionView dequeueReusableCellWithReuseIdentifier:@"GradeSubjectViewIdentifier" forIndexPath:indexPath];
+	[cell setContainer:[[$rootContainer subGradeContainers] objectAtIndex:[indexPath section]]];
+
+	return cell;
+}
+
+/*- (void)prepareContentView {
 	NoButtonDelayScrollView *contentView = (NoButtonDelayScrollView *)$contentView;
 	NSArray *subjectContainers = [$rootContainer subGradeContainers];
 
@@ -4937,7 +5018,7 @@ you will still get a valid token for name "Funcionário".
 		subviewRect.origin.x += subviewRect.size.width;
 	}
 	[contentView setContentSize:CGSizeMake(subviewRect.origin.x, [contentView bounds].size.height)];
-}
+}*/
 
 - (void)dealloc {
 	NSLog(@"GradesListViewController dealloc");
@@ -5463,10 +5544,24 @@ you will still get a valid token for name "Funcionário".
 
 /* Zeugnis {{{ */
 
-@implementation ZeugnisSubjectView
-- (void)setupTableTopGradesWithTableHeaderView:(UIView *)tableHeaderView {
-	CGRect nameLabelFrame = CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f);
+@implementation ZeugnisSubjectView {
+	UILabel *gradeLabel;
+}
 
+- (id)initWithFrame:(CGRect)frame {
+	if ((self = [super initWithFrame:frame])) {
+		CGRect nameLabelFrame = CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f);
+                
+                gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 13.f, [self bounds].size.width/3, 27.f)];
+		[gradeLabel setBackgroundColor:[UIColor clearColor]];
+		[gradeLabel setTextColor:[UIColor blackColor]];
+		[[$tableView tableHeaderView] addSubview:gradeLabel];
+	}
+
+	return self;
+}
+
+- (void)setupTableTopGradesWithTableHeaderView:(UIView *)tableHeaderView {
 	NSString *gradeTitle = @"Nota: ";
 	NSString *averageTitle = @"Média: ";
 
@@ -5478,21 +5573,21 @@ you will still get a valid token for name "Funcionário".
 	[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:pxtopt(24.f)] range:NSMakeRange(0, [averageTitle length])];
 	[averageAttributedString addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:pxtopt(24.f)] range:NSMakeRange([averageTitle length], [averageAttributedString length]-[averageTitle length])];
 
-	UILabel *gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 13.f, [self bounds].size.width/3, 27.f)];
-	[gradeLabel setBackgroundColor:[UIColor clearColor]];
-	[gradeLabel setTextColor:[UIColor blackColor]];
 	[gradeLabel setAttributedText:gradeAttributedString];
 	[gradeAttributedString release];
-	[tableHeaderView addSubview:gradeLabel];
-	[gradeLabel release];
 }
 
 - (void)setupTableFooterView {
-	UITableView *tableView = (UITableView *)[self viewWithTag:77];
+	UITableView *tableView = $tableView;
 
         RecoveryView *recoveryView = [[RecoveryView alloc] initWithContainer:$container width:[tableView bounds].size.width];
 	[tableView setTableFooterView:recoveryView];
 	[recoveryView release];
+}
+
+- (void)dealloc {
+	[gradeLabel release];
+	[super dealloc];
 }
 @end
 
@@ -5586,13 +5681,13 @@ you will still get a valid token for name "Funcionário".
 		NSString *thirdGrade = [[[tdElements objectAtIndex:7] content] americanFloat];
 		NSString *finalGrade = [[[tdElements objectAtIndex:14] content] americanFloat];
 		
-		NSArray *periods = [NSArray arrayWithObjects:firstGrade, secondGrade, thirdGrade, nil];
-		NSArray *order = [NSArray arrayWithObjects:@"Primeiro", @"Segundo", @"Terceiro", nil];
-
-		if ([firstGrade isEqualToString:@" "]) firstGrade = @"$NoGrade";
+                if ([firstGrade isEqualToString:@" "]) firstGrade = @"$NoGrade";
 		if ([secondGrade isEqualToString:@" "]) secondGrade = @"$NoGrade";
 		if ([thirdGrade isEqualToString:@" "]) thirdGrade = @"$NoGrade";
 		if ([finalGrade isEqualToString:@" "]) finalGrade = @"$NoGrade";
+                
+		NSArray *periods = [NSArray arrayWithObjects:firstGrade, secondGrade, thirdGrade, nil];
+		NSArray *order = [NSArray arrayWithObjects:@"Primeiro", @"Segundo", @"Terceiro", nil];
 
 		GradeContainer *subContainer = [[[GradeContainer alloc] init] autorelease];
 		[subContainer setDebugLevel:1];
@@ -5627,7 +5722,7 @@ you will still get a valid token for name "Funcionário".
 	[$rootContainer setSubGradeContainers:containers];
 
 	[self $performUIBlock:^{
-		[self prepareContentView];
+		[(UICollectionView *)$contentView reloadData];
 		[self displayContentView];
 	}];
 
@@ -5635,15 +5730,43 @@ you will still get a valid token for name "Funcionário".
 }
 
 - (void)loadContentView {
-	NoButtonDelayScrollView *scrollView = [[NoButtonDelayScrollView alloc] initWithFrame:[self contentViewFrame]];
-	[scrollView setBackgroundColor:[UIColor whiteColor]];
-	[scrollView setScrollsToTop:NO];
-	[scrollView setPagingEnabled:YES];
+	UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
+	[layout setScrollDirection:UICollectionViewScrollDirectionHorizontal];
 
-	$contentView = scrollView;
+	UICollectionView *collectionView = [[UICollectionView alloc] initWithFrame:[self contentViewFrame] collectionViewLayout:layout];
+	[layout release];
+
+	[collectionView setDataSource:self];
+	[collectionView setDelegate:self];
+	[collectionView registerClass:[ZeugnisSubjectView class] forCellWithReuseIdentifier:@"ZeugnisSubjectViewIdentifier"];
+	[collectionView setBackgroundColor:[UIColor whiteColor]];
+	[collectionView setScrollsToTop:NO];
+	[collectionView setPagingEnabled:YES];
+
+	$contentView = collectionView;
 }
 
-- (void)prepareContentView {
+- (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView {
+	if ($rootContainer == nil) return 0;
+	return [[$rootContainer subGradeContainers] count];
+}
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+	return 1;
+}
+
+- (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)collectionViewLayout sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
+	return [collectionView bounds].size;
+}
+
+- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
+	ZeugnisSubjectView *cell = (ZeugnisSubjectView *)[collectionView dequeueReusableCellWithReuseIdentifier:@"ZeugnisSubjectViewIdentifier" forIndexPath:indexPath];
+	[cell setContainer:[[$rootContainer subGradeContainers] objectAtIndex:[indexPath section]]];
+
+	return cell;
+}
+
+/*- (void)prepareContentView {
 	NoButtonDelayScrollView *contentView = (NoButtonDelayScrollView *)$contentView;
 	NSArray *subjectContainers = [$rootContainer subGradeContainers];
 
@@ -5655,7 +5778,7 @@ you will still get a valid token for name "Funcionário".
 		subviewRect.origin.x += subviewRect.size.width;
 	}
 	[contentView setContentSize:CGSizeMake(subviewRect.origin.x, [contentView bounds].size.height)];
-}
+}*/
 
 - (void)dealloc {
 	[$postKeys release];

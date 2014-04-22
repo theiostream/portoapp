@@ -632,19 +632,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (void)sliderValueChangedForRecoveryCell:(RecoveryTableViewCell *)cell;
 @end
 
-@interface RecoveryView : UIView <UITableViewDataSource, UITableViewDelegate, RecoveryTableViewCellDelegate> {
-	GradeContainer *$container;
-	GradeContainer *$backupContainer;
-
-	UITableView *$tableView;
-
-	GradeContainer *$firstSecondContainer;
-	GradeContainer *$thirdContainer;
-	GradeContainer *$annualContainer;
-}
-- (id)initWithContainer:(GradeContainer *)container width:(CGFloat)width;
-@end
-
 /* }}} */
 
 /* Pie Chart View {{{ */
@@ -1071,7 +1058,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 - (NSString *)serviceName;
 @end
 
-@interface ZeugnisSubjectView : SubjectView
+@interface ZeugnisSubjectView : SubjectView <RecoveryTableViewCellDelegate>
 @end
 
 @interface ZeugnisListViewController : WebDataViewController <UICollectionViewDataSource, UICollectionViewDelegate> {
@@ -1893,11 +1880,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @implementation GradeContainer
 @synthesize name, grade, value, average, subGradeContainers, subBonusContainers, weight, debugLevel, superContainer, isBonus, section, showsGraph, isRecovery;
 
-- (void)setName:(NSString *)name_ {
-	name = [name_ retain];
-	NSLog(@"%p: name %@", self, name);
-}
-
 - (id)init {
 	if ((self = [super init])) {
 		//LOG_ALLOC(self);
@@ -1986,8 +1968,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)dealloc {
-	NSLog(@"GradeContainer dealloc");
-	
 	[name release];
 	[grade release];
 	[value release];
@@ -2393,8 +2373,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)dealloc {
-	NSLog(@"TestView dealloc");
-
 	[container release];
 	[super dealloc];
 }
@@ -2545,8 +2523,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)dealloc {
-	NSLog(@"SubjectView dealloc");
-
 	[$container release];
 	[$tableView release];
 	[nameLabel release];
@@ -2753,259 +2729,6 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	[$slider release];
 	[container release];
 	[backupContainer release];
-
-	[super dealloc];
-}
-@end
-
-@implementation RecoveryView
-- (id)initWithContainer:(GradeContainer *)container width:(CGFloat)width {
-	// We do a copy since we can play with this container for our simulation as much as we feel like it.
-	$backupContainer = [container retain];
-	$container = [container copy];
-	
-	if ((self = [super initWithFrame:CGRectMake(0.f, 0.f, width, [self cellCount] * 56.f + 2.f)])) {
-		[$container calculateGradeFromSubgrades];
-		
-		$firstSecondContainer = [[GradeContainer alloc] init];
-		[$firstSecondContainer setIsRecovery:YES];
-		[$firstSecondContainer setName:@"Recuperação 1º/2º Períodos"];
-		[$firstSecondContainer setGrade:@"0.00"];
-		[$firstSecondContainer makeValueTen];
-		[$firstSecondContainer setSuperContainer:[[$container subGradeContainers] objectAtIndex:0]];
-		
-		$thirdContainer = [[GradeContainer alloc] init];
-		[$thirdContainer setIsRecovery:YES];
-		[$thirdContainer setName:@"Recuperação 3º Período"];
-		[$thirdContainer setGrade:@"0.00"];
-		[$thirdContainer makeValueTen];
-		[$thirdContainer setSuperContainer:[[$container subGradeContainers] objectAtIndex:2]];
-		
-		$annualContainer = [[GradeContainer alloc] init];
-		[$annualContainer setIsRecovery:YES];
-		[$annualContainer setName:@"Recuperação Anual"];
-		[$annualContainer setGrade:@"0.00"];
-		[$annualContainer makeValueTen];
-		[$annualContainer setSuperContainer:$container];
-
-		$tableView = [[UITableView alloc] initWithFrame:CGRectMake([self bounds].origin.x, [self bounds].origin.y + 2, [self bounds].size.width, [self bounds].size.height) style:UITableViewStylePlain];
-		[$tableView setDelegate:self];
-		[$tableView setDataSource:self];
-		[$tableView setScrollEnabled:NO];
-		[$tableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
-
-		[self addSubview:$tableView];
-	}
-
-	return self;
-}
-
-- (void)drawRect:(CGRect)rect {
-	CGContextRef context = UIGraphicsGetCurrentContext();
-	[UIColorFromHexWithAlpha(0xd8d8d8, 1.f) setFill];
-	CGContextFillRect(context, CGRectMake(0.f, 0.f, rect.size.width, 2.f));
-}
-
-- (NSInteger)cellCount {
-	NSInteger ret = 6;
-	NSArray *periods = [$container subGradeContainers];
-
-	if (([[[periods objectAtIndex:0] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:0] isAboveAverage]) &&
-	    ([[[periods objectAtIndex:1] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:1] isAboveAverage]))
-		ret--;
-	
-	// We show R3 only if we don't get RCA.
-	if ([[[periods objectAtIndex:2] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:2] isAboveAverage] || [self recoveredGrades] < kPortoAverage/10)
-		ret--;
-	
-	BOOL isComplete = YES;
-	for (GradeContainer *c in periods) { if ([[c grade] isEqualToString:@"$NoGrade"]) { isComplete = NO; break; } }
-	if ([self recoveredGrades] >= kPortoAverage/10 || !isComplete)
-		ret--;
-	
-	return ret;
-}
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-	return 1;
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-	return [self cellCount];
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-	static NSString *cellIdentifier = @"PortoAppRecoveryViewCellIdentifier";
-	
-	RecoveryTableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
-	if (cell == nil) {
-		cell = [[[RecoveryTableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier] autorelease];
-		[cell setSelectionStyle:UITableViewCellSelectionStyleNone];
-		[cell setDelegate:self];
-	}
-	
-	NSArray *periods = [$container subGradeContainers];
-	
-	GradeContainer *container;
-	GradeContainer *backupContainer = nil;
-	switch ([indexPath row]) {
-		case 0:
-			container = [periods objectAtIndex:0];
-			backupContainer = [[$backupContainer subGradeContainers] objectAtIndex:0];
-			break;
-		case 1:
-			container = [periods objectAtIndex:1];
-			backupContainer = [[$backupContainer subGradeContainers] objectAtIndex:1];
-			break;
-		case 2: {
-			if (([[[periods objectAtIndex:0] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:0] isAboveAverage]) &&
-			    ([[[periods objectAtIndex:1] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:1] isAboveAverage])) {
-				container = [periods objectAtIndex:2];
-				backupContainer = [[$backupContainer subGradeContainers] objectAtIndex:2];
-                        }
-			else {
-				container = $firstSecondContainer;
-			}
-
-			break;
-		}
-		case 3:
-			if (([[[periods objectAtIndex:0] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:0] isAboveAverage]) &&
-			    ([[[periods objectAtIndex:1] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:1] isAboveAverage]))
-				container = [self recoveredGrades]>kPortoAverage/10 ? $thirdContainer : $annualContainer;
-			else {
-				container = [periods objectAtIndex:2];
-				backupContainer = [[$backupContainer subGradeContainers] objectAtIndex:2];
-			}
-			break;
-		case 4:
-			container = [self recoveredGrades]>kPortoAverage/10 ? $thirdContainer : $annualContainer;
-			break;
-                default:
-                        container = nil;
-                        break;
-	}
-
-	[cell setTopText:[container name]];
-	[cell setRightText:[self rightTextForContainer:container]];
-	[cell setBottomText:![container isRecovery] ? nil : [self recoveryTextForContainer:container]];
-	[cell setContainer:container];
-	[cell setBackupContainer:backupContainer];
-
-	[cell setNeedsDisplay];
-	return cell;
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-	return 56.f;
-}
-
-- (NSString *)recoveryTextForContainer:(GradeContainer *)container {
-	// Handle RCA
-	if ([container superContainer] == $container) {
-		CGFloat recoveredValue = ([self recoveredGrades] + [[container grade] floatValue])/2;
-		return [NSString stringWithFormat:@"Nota: %.2f", recoveredValue > kPortoAverage/10 ? kPortoAverage/10 : roundf(recoveredValue*2)/2];
-	}
-	
-	// Handle RC
-	// As of 27/3/2014, I love Carla.
-	else if ([[container superContainer] weight] == 1) {
-		GradeContainer *firstPeriodContainer = [[$container subGradeContainers] objectAtIndex:0];
-		GradeContainer *secondPeriodContainer = [[$container subGradeContainers] objectAtIndex:1];
-		
-		CGFloat firstPeriodGrade = ([[firstPeriodContainer grade] floatValue] + [[container grade] floatValue])/2;
-		CGFloat secondPeriodGrade = ([[secondPeriodContainer grade] floatValue] + [[container grade] floatValue])/2;
-		if (firstPeriodGrade > kPortoAverage/10) firstPeriodGrade = kPortoAverage/10;
-		if (secondPeriodGrade > kPortoAverage/10) secondPeriodGrade = kPortoAverage/10;
-
-		if ([[firstPeriodContainer grade] floatValue] < kPortoAverage/10 && [[secondPeriodContainer grade] floatValue] < kPortoAverage/10) {
-			return [NSString stringWithFormat:@"Nota 1ºP: %.2f\tNota 2ºP: %.2f", firstPeriodGrade, secondPeriodGrade];
-		}
-		else {
-			NSString *compulsory;
-			if ([[[[$container subGradeContainers] objectAtIndex:0] grade] floatValue] + [[[[$container subGradeContainers] objectAtIndex:1] grade] floatValue]*2 < kPortoAverage/10 + (kPortoAverage/10)*2)
-				compulsory = @"(Obrigatório)";
-			else
-				compulsory = @"(Opcional)";
-
-			if ([[firstPeriodContainer grade] floatValue] < kPortoAverage/10) {
-				return [NSString stringWithFormat:@"%@ Nota 1º Período: %.2f", compulsory, firstPeriodGrade];
-			}
-			else if ([[secondPeriodContainer grade] floatValue] < kPortoAverage/10) {
-				return [NSString stringWithFormat:@"%@ Nota 2º Período: %.2f", compulsory, secondPeriodGrade];
-			}
-		}
-
-		return @"RC_ERROR2 Reportar para q@theiostream.com";
-	}
-	
-	// Handle R3
-	else if ([[container superContainer] weight] == 3) {
-		CGFloat recoveredValue = ([[[container superContainer] grade] floatValue] + [[container grade] floatValue])/2;
-		return [NSString stringWithFormat:@"Nota: %.2f", recoveredValue > kPortoAverage/10 ? kPortoAverage/10 : recoveredValue];
-	}
-
-	return @"RC_ERROR1 Reportar para q@theiostream.com";
-}
-
-- (NSString *)rightTextForContainer:(GradeContainer *)container {
-	NSString *str = @"";
-
-	if (![container isRecovery])
-		str = [container isAboveAverage] ? @"AP" : [container weight]==3 ? @"R3" : @"RC";
-	return [str stringByAppendingString:[@"\n" stringByAppendingString:[container grade]]];
-}
-
-- (CGFloat)recoveredGrades {
-	CGFloat totalGrade = 0.f;
-	CGFloat periodGrade, recoveredGrade;
-
-	periodGrade = [[[[$container subGradeContainers] objectAtIndex:0] grade] floatValue];
-	if (periodGrade < kPortoAverage/10) {
-		recoveredGrade = (periodGrade + [[$firstSecondContainer grade] floatValue])/2;
-		periodGrade = recoveredGrade > kPortoAverage/10 ? kPortoAverage/10 : recoveredGrade;
-	}
-	totalGrade += periodGrade;
-
-	periodGrade = [[[[$container subGradeContainers] objectAtIndex:1] grade] floatValue];
-	if (periodGrade < kPortoAverage/10) {
-		recoveredGrade = (periodGrade + [[$firstSecondContainer grade] floatValue])/2;
-		periodGrade = recoveredGrade > kPortoAverage/10 ? kPortoAverage/10 : recoveredGrade;
-	}
-	totalGrade += periodGrade * [[[$container subGradeContainers] objectAtIndex:1] weight];
-
-	periodGrade = [[[[$container subGradeContainers] objectAtIndex:2] grade] floatValue];
-	if (periodGrade < kPortoAverage/10) {
-		recoveredGrade = (periodGrade + [[$thirdContainer grade] floatValue])/2;
-		periodGrade = recoveredGrade > kPortoAverage/10 ? kPortoAverage/10 : recoveredGrade;
-	}
-	totalGrade += periodGrade * [[[$container subGradeContainers] objectAtIndex:2] weight];
-	
-	return totalGrade / [$container totalWeight];
-}
-
-// FIXME: Don't reload data every time there's a value change; that's too consuming.
-// Should instead see when a change is necessary.
-- (void)sliderValueChangedForRecoveryCell:(RecoveryTableViewCell *)cell {
-	[[cell container] setGrade:[NSString stringWithFormat:@"%.2f", [[cell slider] value]*10]];
-	[$container calculateGradeFromSubgrades];
-	
-	[self setFrame:CGRectMake([self frame].origin.x, [self frame].origin.y, [self frame].size.width, [self cellCount] * 56.f + 2.f)];
-	UITableView *t=(UITableView*)self; while(![t isKindOfClass:[UITableView class]]) { t = (UITableView*)[t superview]; } [t setTableFooterView:self]; // hax
-	[$tableView setFrame:CGRectMake([self bounds].origin.x, [self bounds].origin.y + 2, [self bounds].size.width, [self bounds].size.height)];
-	
-	[$tableView reloadData];
-}
-
-- (void)dealloc {
-	[$container release];
-	[$backupContainer release];
-
-	[$tableView release];
-
-	[$firstSecondContainer release];
-	[$thirdContainer release];
-	[$annualContainer release];
 
 	[super dealloc];
 }
@@ -5546,12 +5269,36 @@ you will still get a valid token for name "Funcionário".
 
 @implementation ZeugnisSubjectView {
 	UILabel *gradeLabel;
+
+	GradeContainer *$recoveryContainer;
+	GradeContainer *$firstSecondContainer;
+	GradeContainer *$thirdContainer;
+	GradeContainer *$annualContainer;
 }
 
 - (id)initWithFrame:(CGRect)frame {
 	if ((self = [super initWithFrame:frame])) {
+		$recoveryContainer = nil;
+
+		$firstSecondContainer = [[GradeContainer alloc] init];
+		[$firstSecondContainer setIsRecovery:YES];
+		[$firstSecondContainer setName:@"Recuperação 1º/2º Períodos"];
+		[$firstSecondContainer setGrade:@"0.00"];
+		[$firstSecondContainer makeValueTen];
+		
+		$thirdContainer = [[GradeContainer alloc] init];
+		[$thirdContainer setIsRecovery:YES];
+		[$thirdContainer setName:@"Recuperação 3º Período"];
+		[$thirdContainer setGrade:@"0.00"];
+		[$thirdContainer makeValueTen];
+		
+		$annualContainer = [[GradeContainer alloc] init];
+		[$annualContainer setIsRecovery:YES];
+		[$annualContainer setName:@"Recuperação Anual"];
+		[$annualContainer setGrade:@"0.00"];
+		[$annualContainer makeValueTen];
+
 		CGRect nameLabelFrame = CGRectMake(5.f, 0.f, ([self bounds].size.width/3)*2, 54.f);
-                
                 gradeLabel = [[UILabel alloc] initWithFrame:CGRectMake(nameLabelFrame.size.width + 5.f, 13.f, [self bounds].size.width/3, 27.f)];
 		[gradeLabel setBackgroundColor:[UIColor clearColor]];
 		[gradeLabel setTextColor:[UIColor blackColor]];
@@ -5559,6 +5306,18 @@ you will still get a valid token for name "Funcionário".
 	}
 
 	return self;
+}
+
+- (void)setContainer:(GradeContainer *)container {
+	if ($recoveryContainer) [$recoveryContainer release];
+	$recoveryContainer = [container copy];
+	[$recoveryContainer calculateGradeFromSubgrades];
+
+	[$firstSecondContainer setSuperContainer:[[$recoveryContainer subGradeContainers] objectAtIndex:0]];
+	[$thirdContainer setSuperContainer:[[$recoveryContainer subGradeContainers] objectAtIndex:2]];
+	[$annualContainer setSuperContainer:$recoveryContainer];
+
+	[super setContainer:container];
 }
 
 - (void)setupTableTopGradesWithTableHeaderView:(UIView *)tableHeaderView {
@@ -5577,16 +5336,221 @@ you will still get a valid token for name "Funcionário".
 	[gradeAttributedString release];
 }
 
-- (void)setupTableFooterView {
-	UITableView *tableView = $tableView;
+- (NSInteger)cellCount {
+	if ($recoveryContainer == nil) return 0;
 
-        RecoveryView *recoveryView = [[RecoveryView alloc] initWithContainer:$container width:[tableView bounds].size.width];
-	[tableView setTableFooterView:recoveryView];
-	[recoveryView release];
+	NSInteger ret = 6;
+	NSArray *periods = [$recoveryContainer subGradeContainers];
+
+	if (([[[periods objectAtIndex:0] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:0] isAboveAverage]) &&
+	    ([[[periods objectAtIndex:1] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:1] isAboveAverage]))
+		ret--;
+	
+	// We show R3 only if we don't get RCA.
+	if ([[[periods objectAtIndex:2] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:2] isAboveAverage] || [self recoveredGrades] < kPortoAverage/10)
+		ret--;
+	
+	BOOL isComplete = YES;
+	for (GradeContainer *c in periods) { if ([[c grade] isEqualToString:@"$NoGrade"]) { isComplete = NO; break; } }
+	if ([self recoveredGrades] >= kPortoAverage/10 || !isComplete)
+		ret--;
+	
+	return ret;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+	return [super numberOfSectionsInTableView:tableView] + 1;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+	if (section < [tableView numberOfSections]-1) return [super tableView:tableView numberOfRowsInSection:section];
+	return [self cellCount];
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+	if ([indexPath section] < [tableView numberOfSections]-1) return [super tableView:tableView cellForRowAtIndexPath:indexPath];
+
+	static NSString *cellIdentifier = @"PortoAppRecoveryViewCellIdentifier";
+	
+	RecoveryTableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellIdentifier];
+	if (cell == nil) {
+		cell = [[[RecoveryTableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier] autorelease];
+		[cell setSelectionStyle:UITableViewCellSelectionStyleNone];
+		[cell setDelegate:self];
+	}
+	
+	NSArray *periods = [$recoveryContainer subGradeContainers];
+	
+	GradeContainer *container;
+	GradeContainer *backupContainer = nil;
+	switch ([indexPath row]) {
+		case 0:
+			container = [periods objectAtIndex:0];
+			backupContainer = [[$container subGradeContainers] objectAtIndex:0];
+			break;
+		case 1:
+			container = [periods objectAtIndex:1];
+			backupContainer = [[$container subGradeContainers] objectAtIndex:1];
+			break;
+		case 2: {
+			if (([[[periods objectAtIndex:0] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:0] isAboveAverage]) &&
+			    ([[[periods objectAtIndex:1] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:1] isAboveAverage])) {
+				container = [periods objectAtIndex:2];
+				backupContainer = [[$container subGradeContainers] objectAtIndex:2];
+                        }
+			else {
+				container = $firstSecondContainer;
+			}
+
+			break;
+		}
+		case 3:
+			if (([[[periods objectAtIndex:0] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:0] isAboveAverage]) &&
+			    ([[[periods objectAtIndex:1] grade] isEqualToString:@"$NoGrade"] || [[periods objectAtIndex:1] isAboveAverage]))
+				container = [self recoveredGrades]>kPortoAverage/10 ? $thirdContainer : $annualContainer;
+			else {
+				container = [periods objectAtIndex:2];
+				backupContainer = [[$container subGradeContainers] objectAtIndex:2];
+			}
+			break;
+		case 4:
+			container = [self recoveredGrades]>kPortoAverage/10 ? $thirdContainer : $annualContainer;
+			break;
+                default:
+                        container = nil;
+                        break;
+	}
+
+	[cell setTopText:[container name]];
+	[cell setRightText:[self rightTextForContainer:container]];
+	[cell setBottomText:![container isRecovery] ? nil : [self recoveryTextForContainer:container]];
+	[cell setContainer:container];
+	[cell setBackupContainer:backupContainer];
+
+	[cell setNeedsDisplay];
+	return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+	if ([indexPath section] < [tableView numberOfSections]-1) return [super tableView:tableView heightForRowAtIndexPath:indexPath];
+	return 56.f;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
+	if (section < [tableView numberOfSections]-1) return [super tableView:tableView heightForHeaderInSection:section];
+	return 2.f;
+}
+
+// TODO: UITableViewHeaderFooterView is iOS6+. I dislike having to rely on apis > iOS 5. :(
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+	if (section < [tableView numberOfSections]-1) return [super tableView:tableView viewForHeaderInSection:section];
+
+	UIView *v = [[[UIView alloc] initWithFrame:CGRectZero] autorelease];
+	[v setBackgroundColor:[UIColor grayColor]];
+	return v;
+}
+
+- (NSString *)recoveryTextForContainer:(GradeContainer *)container {
+	// Handle RCA
+	if ([container superContainer] == $recoveryContainer) {
+		CGFloat recoveredValue = ([self recoveredGrades] + [[container grade] floatValue])/2;
+		return [NSString stringWithFormat:@"Nota: %.2f", recoveredValue > kPortoAverage/10 ? kPortoAverage/10 : roundf(recoveredValue*2)/2];
+	}
+	
+	// Handle RC
+	// As of 27/3/2014, I love Carla.
+	else if ([[container superContainer] weight] == 1) {
+		GradeContainer *firstPeriodContainer = [[$recoveryContainer subGradeContainers] objectAtIndex:0];
+		GradeContainer *secondPeriodContainer = [[$recoveryContainer subGradeContainers] objectAtIndex:1];
+		
+		CGFloat firstPeriodGrade = ([[firstPeriodContainer grade] floatValue] + [[container grade] floatValue])/2;
+		CGFloat secondPeriodGrade = ([[secondPeriodContainer grade] floatValue] + [[container grade] floatValue])/2;
+		if (firstPeriodGrade > kPortoAverage/10) firstPeriodGrade = kPortoAverage/10;
+		if (secondPeriodGrade > kPortoAverage/10) secondPeriodGrade = kPortoAverage/10;
+
+		if ([[firstPeriodContainer grade] floatValue] < kPortoAverage/10 && [[secondPeriodContainer grade] floatValue] < kPortoAverage/10) {
+			return [NSString stringWithFormat:@"Nota 1ºP: %.2f\tNota 2ºP: %.2f", firstPeriodGrade, secondPeriodGrade];
+		}
+		else {
+			NSString *compulsory;
+			if ([[[[$recoveryContainer subGradeContainers] objectAtIndex:0] grade] floatValue] + [[[[$recoveryContainer subGradeContainers] objectAtIndex:1] grade] floatValue]*2 < kPortoAverage/10 + (kPortoAverage/10)*2)
+				compulsory = @"(Obrigatório)";
+			else
+				compulsory = @"(Opcional)";
+
+			if ([[firstPeriodContainer grade] floatValue] < kPortoAverage/10) {
+				return [NSString stringWithFormat:@"%@ Nota 1º Período: %.2f", compulsory, firstPeriodGrade];
+			}
+			else if ([[secondPeriodContainer grade] floatValue] < kPortoAverage/10) {
+				return [NSString stringWithFormat:@"%@ Nota 2º Período: %.2f", compulsory, secondPeriodGrade];
+			}
+		}
+
+		return @"RC_ERROR2 Reportar para q@theiostream.com";
+	}
+	
+	// Handle R3
+	else if ([[container superContainer] weight] == 3) {
+		CGFloat recoveredValue = ([[[container superContainer] grade] floatValue] + [[container grade] floatValue])/2;
+		return [NSString stringWithFormat:@"Nota: %.2f", recoveredValue > kPortoAverage/10 ? kPortoAverage/10 : recoveredValue];
+	}
+
+	return @"RC_ERROR1 Reportar para q@theiostream.com";
+}
+
+- (NSString *)rightTextForContainer:(GradeContainer *)container {
+	NSString *str = @"";
+
+	if (![container isRecovery])
+		str = [container isAboveAverage] ? @"AP" : [container weight]==3 ? @"R3" : @"RC";
+	return [str stringByAppendingString:[@"\n" stringByAppendingString:[container grade]]];
+}
+
+- (CGFloat)recoveredGrades {
+	CGFloat totalGrade = 0.f;
+	CGFloat periodGrade, recoveredGrade;
+
+	periodGrade = [[[[$recoveryContainer subGradeContainers] objectAtIndex:0] grade] floatValue];
+	if (periodGrade < kPortoAverage/10) {
+		recoveredGrade = (periodGrade + [[$firstSecondContainer grade] floatValue])/2;
+		periodGrade = recoveredGrade > kPortoAverage/10 ? kPortoAverage/10 : recoveredGrade;
+	}
+	totalGrade += periodGrade;
+
+	periodGrade = [[[[$recoveryContainer subGradeContainers] objectAtIndex:1] grade] floatValue];
+	if (periodGrade < kPortoAverage/10) {
+		recoveredGrade = (periodGrade + [[$firstSecondContainer grade] floatValue])/2;
+		periodGrade = recoveredGrade > kPortoAverage/10 ? kPortoAverage/10 : recoveredGrade;
+	}
+	totalGrade += periodGrade * [[[$recoveryContainer subGradeContainers] objectAtIndex:1] weight];
+
+	periodGrade = [[[[$recoveryContainer subGradeContainers] objectAtIndex:2] grade] floatValue];
+	if (periodGrade < kPortoAverage/10) {
+		recoveredGrade = (periodGrade + [[$thirdContainer grade] floatValue])/2;
+		periodGrade = recoveredGrade > kPortoAverage/10 ? kPortoAverage/10 : recoveredGrade;
+	}
+	totalGrade += periodGrade * [[[$recoveryContainer subGradeContainers] objectAtIndex:2] weight];
+	
+	return totalGrade / [$recoveryContainer totalWeight];
+}
+
+// FIXME: Don't reload data every time there's a value change; that's too consuming.
+// Should instead see when a change is necessary.
+- (void)sliderValueChangedForRecoveryCell:(RecoveryTableViewCell *)cell {
+	[[cell container] setGrade:[NSString stringWithFormat:@"%.2f", [[cell slider] value]*10]];
+	[$recoveryContainer calculateGradeFromSubgrades];
+	
+	[$tableView reloadData];
 }
 
 - (void)dealloc {
 	[gradeLabel release];
+
+	[$recoveryContainer release];
+	[$firstSecondContainer release];
+	[$thirdContainer release];
+	[$annualContainer release];
+
 	[super dealloc];
 }
 @end

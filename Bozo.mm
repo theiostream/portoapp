@@ -3625,7 +3625,7 @@ you will still get a valid token for name "Funcionário".
 	}
 	CFRelease(reachability);
 
-	return (status == ReachableViaWWAN && $cachedData) || status == NotReachable;
+	return status == NotReachable;
 	#endif
 }
 

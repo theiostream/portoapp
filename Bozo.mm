@@ -3051,7 +3051,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 				serverIdCookie, kPortoServerIdKey,
 				nil];
 			[self setSessionInfo:sessionInfo];
-
+			
 			handler(YES, nil);
 		}
 		else handler(NO, error);
@@ -3387,6 +3387,7 @@ you will still get a valid token for name "Funcionário".
 		$cacheIdentifier = [cacheIdentifier_ retain];
 		NSString *cacheFile = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0] stringByAppendingPathComponent:[NSString stringWithFormat:@"%@-%@-Cache", NSStringFromClass([self class]), [self cacheIdentifier]]];		
 		$cachedData = [[NSData alloc] initWithContentsOfFile:cacheFile];
+
 	}
 
 	return self;
@@ -3452,14 +3453,22 @@ you will still get a valid token for name "Funcionário".
 
 - (void)viewDidUnload {
 	[super viewDidUnload];
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+
 	if (!SYSTEM_VERSION_GT_EQ(@"6.0")) [self $freeViews];
 }
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+	
+	[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector($notificationRefresh:) name:@"PortoDidPerformLogin" object:nil];
 	[self refresh];
 
 	// TODO: Add a session id check here (would be convenient)
+}
+
+- (void)$notificationRefresh:(NSNotification *)notification {
+	[self refresh];
 }
 
 - (void)refresh {
@@ -3969,6 +3978,8 @@ you will still get a valid token for name "Funcionário".
 		else {
 			[controller generateGradeID];
 			[controller generatePapersID];
+
+			[[NSNotificationCenter defaultCenter] postNotificationName:@"PortoDidPerformLogin" object:nil];			
 		}
 
 		[self endRequestWithSuccess:success error:error];
@@ -4437,6 +4448,11 @@ you will still get a valid token for name "Funcionário".
 	}
 
 	return self;
+}
+
+- (void)$notificationRefresh:(NSNotification *)notification {
+	[[self navigationController] popToRootViewControllerAnimated:YES];
+	[super $notificationRefresh:notification];
 }
 
 - (void)reloadData {
@@ -5565,6 +5581,11 @@ you will still get a valid token for name "Funcionário".
 	}
         
         return self;
+}
+
+- (void)$notificationRefresh:(NSNotification *)notification {
+	[[self navigationController] popToRootViewControllerAnimated:YES];
+	[super $notificationRefresh:notification];
 }
 
 - (void)loadView {

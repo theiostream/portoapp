@@ -16,6 +16,7 @@
 		ED0CCA0B18E50D110055C955 /* icon-small@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0CCA0518E50D110055C955 /* icon-small@2x.png */; };
 		ED0CCA0C18E50D110055C955 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0CCA0618E50D110055C955 /* icon.png */; };
 		ED0CCA0D18E50D110055C955 /* icon@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0CCA0718E50D110055C955 /* icon@2x.png */; };
+		ED232F1219073F6C0021250C /* daniel.png in Resources */ = {isa = PBXBuildFile; fileRef = ED232F1119073F6B0021250C /* daniel.png */; };
 		ED2991541899E7DA00A89AAB /* github-buttons.html in Resources */ = {isa = PBXBuildFile; fileRef = ED2991531899E7DA00A89AAB /* github-buttons.html */; };
 		ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */ = {isa = PBXBuildFile; fileRef = ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */; };
 		ED6751611899AFC600E6FAEF /* about.html in Resources */ = {isa = PBXBuildFile; fileRef = ED6751601899AFC600E6FAEF /* about.html */; };
@@ -49,6 +50,7 @@
 		ED0CCA0518E50D110055C955 /* icon-small@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-small@2x.png"; sourceTree = "<group>"; };
 		ED0CCA0618E50D110055C955 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = icon.png; sourceTree = "<group>"; };
 		ED0CCA0718E50D110055C955 /* icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon@2x.png"; sourceTree = "<group>"; };
+		ED232F1119073F6B0021250C /* daniel.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = daniel.png; sourceTree = "<group>"; };
 		ED2991531899E7DA00A89AAB /* github-buttons.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = "github-buttons.html"; sourceTree = "<group>"; };
 		ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = acontece_no_porto.gif; sourceTree = "<group>"; };
 		ED6751601899AFC600E6FAEF /* about.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = about.html; sourceTree = "<group>"; };
@@ -115,6 +117,7 @@
 				ED6751601899AFC600E6FAEF /* about.html */,
 				ED6751621899AFD200E6FAEF /* theiostream.html */,
 				ED2991531899E7DA00A89AAB /* github-buttons.html */,
+				ED232F1119073F6B0021250C /* daniel.png */,
 			);
 			name = About;
 			sourceTree = "<group>";
@@ -274,6 +277,7 @@
 				ED9274071905BA380092E567 /* grade_tab@2x.png in Resources */,
 				ED0AC2AD18A9936600277CAB /* news_tab.png in Resources */,
 				ED80CC2918958C0B0078D82B /* news_base.html in Resources */,
+				ED232F1219073F6C0021250C /* daniel.png in Resources */,
 				ED6751631899AFD200E6FAEF /* theiostream.html in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

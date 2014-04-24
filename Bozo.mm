@@ -5518,7 +5518,7 @@ you will still get a valid token for name "Funcionário".
 	NSString *str = @"";
 
 	if (![container isRecovery])
-		str = [container isAboveAverage] ? @"AP" : [container weight]==3 ? @"R3" : @"RC";
+		str = [container isAboveAverage] ? @"AP" : [container weight]==3 ? ([self recoveredGrades]>kPortoAverage/10 ? @"R3" : @"RCA") : @"RC";
 	return [str stringByAppendingString:[@"\n" stringByAppendingString:[container grade]]];
 }
 
@@ -5529,6 +5529,7 @@ you will still get a valid token for name "Funcionário".
 	periodGrade = [[[[$recoveryContainer subGradeContainers] objectAtIndex:0] grade] floatValue];
 	if (periodGrade < kPortoAverage/10) {
 		recoveredGrade = (periodGrade + [[$firstSecondContainer grade] floatValue])/2;
+		if (recoveredGrade < periodGrade) recoveredGrade = periodGrade;
 		periodGrade = recoveredGrade > kPortoAverage/10 ? kPortoAverage/10 : recoveredGrade;
 	}
 	totalGrade += periodGrade;
@@ -5536,13 +5537,15 @@ you will still get a valid token for name "Funcionário".
 	periodGrade = [[[[$recoveryContainer subGradeContainers] objectAtIndex:1] grade] floatValue];
 	if (periodGrade < kPortoAverage/10) {
 		recoveredGrade = (periodGrade + [[$firstSecondContainer grade] floatValue])/2;
+		if (recoveredGrade < periodGrade) recoveredGrade = periodGrade;
 		periodGrade = recoveredGrade > kPortoAverage/10 ? kPortoAverage/10 : recoveredGrade;
 	}
 	totalGrade += periodGrade * [[[$recoveryContainer subGradeContainers] objectAtIndex:1] weight];
 
 	periodGrade = [[[[$recoveryContainer subGradeContainers] objectAtIndex:2] grade] floatValue];
-	if (periodGrade < kPortoAverage/10) {
+	if (periodGrade < kPortoAverage/10 && (periodGrade+totalGrade)/6 > kPortoAverage/10) {
 		recoveredGrade = (periodGrade + [[$thirdContainer grade] floatValue])/2;
+		if (recoveredGrade < periodGrade) recoveredGrade = periodGrade;
 		periodGrade = recoveredGrade > kPortoAverage/10 ? kPortoAverage/10 : recoveredGrade;
 	}
 	totalGrade += periodGrade * [[[$recoveryContainer subGradeContainers] objectAtIndex:2] weight];

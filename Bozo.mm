@@ -5028,7 +5028,7 @@ you will still get a valid token for name "Funcionário".
 			return;
 		}
 		
-		$folder = $viewState->pair->first->pair->second->pair->second->arrayList[1]->pair->second->arrayList[5]->pair->first->array->array[1]->array->array[1]->array->array[1];
+		$folder = $viewState->pair->first->pair->second->pair->second->arrayList[1]->pair->second->arrayList[9]->pair->first->array->array[1]->array->array[1]->array->array[1];
 		NSLog(@"$folder ptr %p", $folder);
 		[document release];
 	}
@@ -5218,9 +5218,13 @@ you will still get a valid token for name "Funcionário".
 
 		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.turmadoaluno.portoseguro.org.br/?token=%@", [sessionController gradeID]]];
 		NSHTTPURLResponse *response;
+                
+                NSURLRequest *cr = [sessionController requestForPageWithURL:url method:@"POST" cookies:nil];
+                [NSURLConnection sendSynchronousRequest:cr returningResponse:&response error:NULL];
+                NSArray *cks = [NSHTTPCookie cookiesWithResponseHeaderFields:[response allHeaderFields] forURL:url];
 		
-		// TODO: Find out why we can't pass the authentication cookies here.
-		NSURLRequest *r = [sessionController requestForPageWithURL:url method:@"POST" cookies:nil];
+		url = [NSURL URLWithString:@"http://www.turmadoaluno.portoseguro.org.br/Agenda.aspx"];
+                NSURLRequest *r = [sessionController requestForPageWithURL:url method:@"GET" cookies:cks];
 		data = [NSURLConnection sendSynchronousRequest:r returningResponse:&response error:NULL];
 		if (data == nil) {
 			[self displayFailViewWithTitle:@"Erro de Conexão." text:@"Não pôde-se conectar ao servidor."];
@@ -5232,14 +5236,18 @@ you will still get a valid token for name "Funcionário".
 
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
 
-	NSString *year = [[document firstElementMatchingPath:@"/html/body//span[@id='lblAno']"] content];
-	NSString *clazz = [[document firstElementMatchingPath:@"/html/body//span[@id='lblTurma']"] content];
+	NSString *year = [[document firstElementMatchingPath:@"/html/body//span[@id='ContentPlaceHolder1_lblAno2']"] content];
+	NSString *clazz = [[document firstElementMatchingPath:@"/html/body//span[@id='ContentPlaceHolder1_lblTurma']"] content];
 	if (year == nil || clazz == nil) {
 		[self displayFailViewWithTitle:@"Erro de Interpretação." text:@"Erro:LblAno/LblTurma" kReportIssue];
 		
 		[document release];
 		return;
 	}
+        
+        NSLog(@"DID NOT FAIL! YEAR = %@", year);
+        if ([year length] >= 33)
+                year = [year substringWithRange:NSMakeRange(27, 4)]; // 27=strlen(Turma para o Ano Letivo de)
 
 	[document release];
 

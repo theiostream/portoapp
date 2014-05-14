@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "EDB4080017E25F7500521640"
-               BuildableName = "PortoApp.app"
+               BuildableName = "portoapp.app"
                BlueprintName = "PortoApp"
                ReferencedContainer = "container:PortoApp.xcodeproj">
             </BuildableReference>
@@ -33,7 +33,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "EDB4080017E25F7500521640"
-            BuildableName = "PortoApp.app"
+            BuildableName = "portoapp.app"
             BlueprintName = "PortoApp"
             ReferencedContainer = "container:PortoApp.xcodeproj">
          </BuildableReference>
@@ -52,7 +52,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "EDB4080017E25F7500521640"
-            BuildableName = "PortoApp.app"
+            BuildableName = "portoapp.app"
             BlueprintName = "PortoApp"
             ReferencedContainer = "container:PortoApp.xcodeproj">
          </BuildableReference>
@@ -70,7 +70,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "EDB4080017E25F7500521640"
-            BuildableName = "PortoApp.app"
+            BuildableName = "portoapp.app"
             BlueprintName = "PortoApp"
             ReferencedContainer = "container:PortoApp.xcodeproj">
          </BuildableReference>

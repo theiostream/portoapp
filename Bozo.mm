@@ -2744,7 +2744,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 #define kPortoErrorDomain @"PortoServerError"
 
-#define kPortoLoginURL @"http://www.educacional.com.br/login/login_ver.asp"
+#define kPortoLoginURL @"http://www.educacional.com.br/login/login_ver.asp?URL="
 #define kPortoLogoutURL @"http://www.educacional.com.br/login/logout.asp"
 
 #define kPortoLoginUsernameKey @"strLogin"
@@ -6473,7 +6473,7 @@ static void DebugInit() {
 
 	NewsViewController *newsViewController = [[[NewsViewController alloc] initWithIdentifier:@"news"] autorelease];
 	UINavigationController *newsNavController = [[[UINavigationController alloc] initWithRootViewController:newsViewController] autorelease];
-	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:/*_UIImageWithName(@"UITabBarFavoritesTemplate.png")*/[UIImage imageNamed:@"news_tab.png"] tag:0] autorelease]];
+	[newsNavController setTabBarItem:[[[UITabBarItem alloc] initWithTitle:@"Notícias" image:_UIImageWithName(@"UITabBarFavoritesTemplate.png") tag:0] autorelease]];
 	
 	GradesViewController *gradesViewController = [[[GradesViewController alloc] initWithIdentifier:@"grades"] autorelease];
 	UINavigationController *gradesNavController = [[[UINavigationController alloc] initWithRootViewController:gradesViewController] autorelease];

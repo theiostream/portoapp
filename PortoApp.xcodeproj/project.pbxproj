@@ -8,14 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		ED041D021832BF4E007D2CEC /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED041D011832BF4E007D2CEC /* QuartzCore.framework */; };
-		ED0AC2AB18A98F6000277CAB /* news_tab@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0AC2AA18A98F6000277CAB /* news_tab@2x.png */; };
-		ED0AC2AD18A9936600277CAB /* news_tab.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0AC2AC18A9936600277CAB /* news_tab.png */; };
-		ED0CCA0818E50D110055C955 /* icon-80.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0CCA0218E50D110055C955 /* icon-80.png */; };
-		ED0CCA0918E50D110055C955 /* icon-120.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0CCA0318E50D110055C955 /* icon-120.png */; };
-		ED0CCA0A18E50D110055C955 /* icon-small.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0CCA0418E50D110055C955 /* icon-small.png */; };
-		ED0CCA0B18E50D110055C955 /* icon-small@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0CCA0518E50D110055C955 /* icon-small@2x.png */; };
-		ED0CCA0C18E50D110055C955 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0CCA0618E50D110055C955 /* icon.png */; };
-		ED0CCA0D18E50D110055C955 /* icon@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ED0CCA0718E50D110055C955 /* icon@2x.png */; };
 		ED232F1219073F6C0021250C /* daniel.png in Resources */ = {isa = PBXBuildFile; fileRef = ED232F1119073F6B0021250C /* daniel.png */; };
 		ED2991541899E7DA00A89AAB /* github-buttons.html in Resources */ = {isa = PBXBuildFile; fileRef = ED2991531899E7DA00A89AAB /* github-buttons.html */; };
 		ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */ = {isa = PBXBuildFile; fileRef = ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */; };
@@ -26,13 +18,11 @@
 		ED8DD83417EA2B0800864BFA /* CoreText.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED8DD83317EA2B0800864BFA /* CoreText.framework */; };
 		ED9274071905BA380092E567 /* grade_tab@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ED9274061905BA380092E567 /* grade_tab@2x.png */; };
 		ED9274091905BB3F0092E567 /* grade_tab.png in Resources */ = {isa = PBXBuildFile; fileRef = ED9274081905BB3F0092E567 /* grade_tab.png */; };
+		ED9CF3F11908943800BCFCEE /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ED9CF3F01908943800BCFCEE /* Images.xcassets */; };
 		EDB4080517E25F7500521640 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080417E25F7500521640 /* UIKit.framework */; };
 		EDB4080717E25F7500521640 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080617E25F7500521640 /* Foundation.framework */; };
 		EDB4080917E25F7500521640 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB4080817E25F7500521640 /* CoreGraphics.framework */; };
 		EDB4080F17E25F7500521640 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = EDB4080D17E25F7500521640 /* InfoPlist.strings */; };
-		EDB4081717E25F7500521640 /* Default.png in Resources */ = {isa = PBXBuildFile; fileRef = EDB4081617E25F7500521640 /* Default.png */; };
-		EDB4081917E25F7500521640 /* Default@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = EDB4081817E25F7500521640 /* Default@2x.png */; };
-		EDB4081B17E25F7500521640 /* Default-568h@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = EDB4081A17E25F7500521640 /* Default-568h@2x.png */; };
 		EDB4082317E25FA600521640 /* Bozo.mm in Sources */ = {isa = PBXBuildFile; fileRef = EDB4082217E25FA600521640 /* Bozo.mm */; };
 		EDBFFDD517E926A800C393D5 /* libxml2.2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */; };
 		EDD1A9F717E7C27B00AA26CF /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDD1A9F617E7C27B00AA26CF /* Security.framework */; };
@@ -42,14 +32,6 @@
 
 /* Begin PBXFileReference section */
 		ED041D011832BF4E007D2CEC /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
-		ED0AC2AA18A98F6000277CAB /* news_tab@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "news_tab@2x.png"; sourceTree = "<group>"; };
-		ED0AC2AC18A9936600277CAB /* news_tab.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = news_tab.png; sourceTree = "<group>"; };
-		ED0CCA0218E50D110055C955 /* icon-80.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-80.png"; sourceTree = "<group>"; };
-		ED0CCA0318E50D110055C955 /* icon-120.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-120.png"; sourceTree = "<group>"; };
-		ED0CCA0418E50D110055C955 /* icon-small.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-small.png"; sourceTree = "<group>"; };
-		ED0CCA0518E50D110055C955 /* icon-small@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-small@2x.png"; sourceTree = "<group>"; };
-		ED0CCA0618E50D110055C955 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = icon.png; sourceTree = "<group>"; };
-		ED0CCA0718E50D110055C955 /* icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon@2x.png"; sourceTree = "<group>"; };
 		ED232F1119073F6B0021250C /* daniel.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = daniel.png; sourceTree = "<group>"; };
 		ED2991531899E7DA00A89AAB /* github-buttons.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = "github-buttons.html"; sourceTree = "<group>"; };
 		ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = acontece_no_porto.gif; sourceTree = "<group>"; };
@@ -61,16 +43,14 @@
 		ED9274061905BA380092E567 /* grade_tab@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "grade_tab@2x.png"; sourceTree = "<group>"; };
 		ED9274081905BB3F0092E567 /* grade_tab.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = grade_tab.png; sourceTree = "<group>"; };
 		ED92740A1905D0AB0092E567 /* PortoApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PortoApp.entitlements; sourceTree = "<group>"; };
-		EDB4080117E25F7500521640 /* PortoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PortoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ED9CF3F01908943800BCFCEE /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Images.xcassets; sourceTree = "<group>"; };
+		EDB4080117E25F7500521640 /* portoapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = portoapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EDB4080417E25F7500521640 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		EDB4080617E25F7500521640 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		EDB4080817E25F7500521640 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		EDB4080C17E25F7500521640 /* PortoApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "PortoApp-Info.plist"; sourceTree = "<group>"; };
 		EDB4080E17E25F7500521640 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		EDB4081217E25F7500521640 /* PortoApp-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PortoApp-Prefix.pch"; sourceTree = "<group>"; };
-		EDB4081617E25F7500521640 /* Default.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Default.png; sourceTree = "<group>"; };
-		EDB4081817E25F7500521640 /* Default@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default@2x.png"; sourceTree = "<group>"; };
-		EDB4081A17E25F7500521640 /* Default-568h@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default-568h@2x.png"; sourceTree = "<group>"; };
 		EDB4082117E25FA600521640 /* Bozo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Bozo.h; sourceTree = "<group>"; };
 		EDB4082217E25FA600521640 /* Bozo.mm */ = {isa = PBXFileReference; fileEncoding = 4; indentWidth = 8; lastKnownFileType = sourcecode.cpp.objcpp; path = Bozo.mm; sourceTree = "<group>"; tabWidth = 8; };
 		EDBFFDD417E926A800C393D5 /* libxml2.2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxml2.2.dylib; path = usr/lib/libxml2.2.dylib; sourceTree = SDKROOT; };
@@ -102,9 +82,6 @@
 		ED0AC2A918A98F4700277CAB /* Tab Bar */ = {
 			isa = PBXGroup;
 			children = (
-				EDB4081817E25F7500521640 /* Default@2x.png */,
-				ED0AC2AC18A9936600277CAB /* news_tab.png */,
-				ED0AC2AA18A98F6000277CAB /* news_tab@2x.png */,
 				ED9274081905BB3F0092E567 /* grade_tab.png */,
 				ED9274061905BA380092E567 /* grade_tab@2x.png */,
 			);
@@ -125,12 +102,6 @@
 		ED0CCA0118E50CCE0055C955 /* Icons */ = {
 			isa = PBXGroup;
 			children = (
-				ED0CCA0218E50D110055C955 /* icon-80.png */,
-				ED0CCA0318E50D110055C955 /* icon-120.png */,
-				ED0CCA0418E50D110055C955 /* icon-small.png */,
-				ED0CCA0518E50D110055C955 /* icon-small@2x.png */,
-				ED0CCA0618E50D110055C955 /* icon.png */,
-				ED0CCA0718E50D110055C955 /* icon@2x.png */,
 			);
 			name = Icons;
 			sourceTree = "<group>";
@@ -150,7 +121,7 @@
 		EDB4080217E25F7500521640 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				EDB4080117E25F7500521640 /* PortoApp.app */,
+				EDB4080117E25F7500521640 /* portoapp.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -175,6 +146,7 @@
 			isa = PBXGroup;
 			children = (
 				ED92740A1905D0AB0092E567 /* PortoApp.entitlements */,
+				ED9CF3F01908943800BCFCEE /* Images.xcassets */,
 				EDB4080B17E25F7500521640 /* Supporting Files */,
 			);
 			path = PortoApp;
@@ -189,8 +161,6 @@
 				EDB4080C17E25F7500521640 /* PortoApp-Info.plist */,
 				EDB4080D17E25F7500521640 /* InfoPlist.strings */,
 				EDB4081217E25F7500521640 /* PortoApp-Prefix.pch */,
-				EDB4081617E25F7500521640 /* Default.png */,
-				EDB4081A17E25F7500521640 /* Default-568h@2x.png */,
 				ED548D0B17EA7447003D9B08 /* acontece_no_porto.gif */,
 				ED80CC2818958C0B0078D82B /* news_base.html */,
 			);
@@ -215,7 +185,7 @@
 			);
 			name = PortoApp;
 			productName = PortoApp;
-			productReference = EDB4080117E25F7500521640 /* PortoApp.app */;
+			productReference = EDB4080117E25F7500521640 /* portoapp.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -259,23 +229,13 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				ED0CCA0B18E50D110055C955 /* icon-small@2x.png in Resources */,
-				ED0AC2AB18A98F6000277CAB /* news_tab@2x.png in Resources */,
 				ED6751611899AFC600E6FAEF /* about.html in Resources */,
-				ED0CCA0D18E50D110055C955 /* icon@2x.png in Resources */,
 				EDB4080F17E25F7500521640 /* InfoPlist.strings in Resources */,
-				ED0CCA0C18E50D110055C955 /* icon.png in Resources */,
-				EDB4081717E25F7500521640 /* Default.png in Resources */,
-				EDB4081917E25F7500521640 /* Default@2x.png in Resources */,
-				EDB4081B17E25F7500521640 /* Default-568h@2x.png in Resources */,
 				ED548D0C17EA7447003D9B08 /* acontece_no_porto.gif in Resources */,
 				ED9274091905BB3F0092E567 /* grade_tab.png in Resources */,
 				ED2991541899E7DA00A89AAB /* github-buttons.html in Resources */,
-				ED0CCA0918E50D110055C955 /* icon-120.png in Resources */,
-				ED0CCA0818E50D110055C955 /* icon-80.png in Resources */,
-				ED0CCA0A18E50D110055C955 /* icon-small.png in Resources */,
 				ED9274071905BA380092E567 /* grade_tab@2x.png in Resources */,
-				ED0AC2AD18A9936600277CAB /* news_tab.png in Resources */,
+				ED9CF3F11908943800BCFCEE /* Images.xcassets in Resources */,
 				ED80CC2918958C0B0078D82B /* news_base.html in Resources */,
 				ED232F1219073F6C0021250C /* daniel.png in Resources */,
 				ED6751631899AFD200E6FAEF /* theiostream.html in Resources */,
@@ -335,7 +295,8 @@
 				CLANG_WARN_ENUM_CONVERSION = YES;
 				CLANG_WARN_INT_CONVERSION = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
 				COPY_PHASE_STRIP = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_DYNAMIC_NO_PIC = NO;
@@ -350,6 +311,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 6.0;
 				ONLY_ACTIVE_ARCH = YES;
+				PROVISIONING_PROFILE = "809480F8-5FED-406C-9EE2-029C48230A18";
 				SDKROOT = iphoneos;
 			};
 			name = Debug;
@@ -365,7 +327,8 @@
 				CLANG_WARN_ENUM_CONVERSION = YES;
 				CLANG_WARN_INT_CONVERSION = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
 				COPY_PHASE_STRIP = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
@@ -373,6 +336,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 6.0;
 				OTHER_CFLAGS = "-DNS_BLOCK_ASSERTIONS=1";
+				PROVISIONING_PROFILE = "809480F8-5FED-406C-9EE2-029C48230A18";
 				SDKROOT = iphoneos;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -382,8 +346,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = YES;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				CODE_SIGN_IDENTITY = "iPhone Distribution: GyreSoft Limited (FJ5KB9MX33)";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution: GyreSoft Limited (FJ5KB9MX33)";
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
 				HEADER_SEARCH_PATHS = (
@@ -394,9 +360,10 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 6.0;
 				OTHER_CFLAGS = "-I/usr/local/include";
 				OTHER_LDFLAGS = "-L/usr/local/lib";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE = "";
+				PRODUCT_NAME = portoapp;
+				PROVISIONING_PROFILE = "41B37B12-53E0-45FC-8DA0-B1AD0008254D";
 				SDKROOT = iphoneos7.0;
+				TARGETED_DEVICE_FAMILY = 1;
 				WRAPPER_EXTENSION = app;
 			};
 			name = Debug;
@@ -405,8 +372,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = YES;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
+				CODE_SIGN_IDENTITY = "iPhone Distribution: GyreSoft Limited (FJ5KB9MX33)";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution: GyreSoft Limited (FJ5KB9MX33)";
 				GCC_PRECOMPILE_PREFIX_HEADER = YES;
 				GCC_PREFIX_HEADER = "PortoApp/PortoApp-Prefix.pch";
 				HEADER_SEARCH_PATHS = (
@@ -417,9 +386,10 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 6.0;
 				OTHER_CFLAGS = "-I/usr/local/include";
 				OTHER_LDFLAGS = "-L/usr/local/lib";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE = "";
+				PRODUCT_NAME = portoapp;
+				PROVISIONING_PROFILE = "41B37B12-53E0-45FC-8DA0-B1AD0008254D";
 				SDKROOT = iphoneos7.0;
+				TARGETED_DEVICE_FAMILY = 1;
 				WRAPPER_EXTENSION = app;
 			};
 			name = Release;

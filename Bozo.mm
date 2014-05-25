@@ -2268,6 +2268,11 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 @implementation TestView
 @synthesize container;
 
+- (void)setContainer:(GradeContainer *)container_ {
+        [self setNeedsDisplay];
+        container = [container_ retain];
+}
+
 - (void)drawRect:(CGRect)rect {
 	//NSLog(@"-[TestView drawRect:%@] with %@", NSStringFromCGRect(rect), NSStringFromClass([self class]));
 	
@@ -2428,7 +2433,9 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	
         [nameLabel setText:[container name]];
 	[self setupTableFooterView];
-	[self setupTableTopGradesWithTableHeaderView:[$tableView tableHeaderView]];
+	
+        if ([$container hasGrade])
+                [self setupTableTopGradesWithTableHeaderView:[$tableView tableHeaderView]];
 
 	[$tableView reloadData];
 }
@@ -2473,6 +2480,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	
 	SubjectTableViewCellContentView *contentView_ = (SubjectTableViewCellContentView *)[[[[cell contentView] viewWithTag:55] subviews] objectAtIndex:0];
 	[contentView_ setContainer:[[[[$container subGradeContainers] objectAtIndex:[indexPath section]] subGradeContainers] objectAtIndex:[indexPath row]]];
+        NSLog(@"we talking about %@", [[$container subGradeContainers] objectAtIndex:[indexPath section]]);
 
 	return cell;
 }
@@ -4740,7 +4748,7 @@ you will still get a valid token for name "Funcionário".
 
 - (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath {
 	GradesSubjectView *cell = (GradesSubjectView *)[collectionView dequeueReusableCellWithReuseIdentifier:@"GradeSubjectViewIdentifier" forIndexPath:indexPath];
-	[cell setContainer:[[$rootContainer subGradeContainers] objectAtIndex:[indexPath section]]];
+        [cell setContainer:[[$rootContainer subGradeContainers] objectAtIndex:[indexPath section]]];
 
 	return cell;
 }

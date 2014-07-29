@@ -4194,16 +4194,18 @@ you will still get a valid token for name "Funcionário".
         CFRelease(bodyFont);
         CFRelease(headFont);
         
-        NSAttributedString *titleString = [[NSAttributedString alloc] initWithString:$newsTitle attributes:boldFontAttributes];
+        NSAttributedString *titleString = $newsTitle ? [[NSAttributedString alloc] initWithString:$newsTitle attributes:boldFontAttributes] : nil;
         NSAttributedString *subtitleString = [[NSAttributedString alloc] initWithString:$newsSubtitle attributes:fontAttributes];
 
-        CTLineRef line = CTLineCreateWithAttributedString((CFAttributedStringRef)titleString);
-        [titleString release];
+        if (titleString) {
+                CTLineRef line = CTLineCreateWithAttributedString((CFAttributedStringRef)titleString);
+                [titleString release];
+                
+                CGContextSetTextPosition(context, 5.f, [self bounds].size.height - 150.f);
+                CTLineDraw(line, context);
+                CFRelease(line);
+        }
         
-        CGContextSetTextPosition(context, 5.f, [self bounds].size.height - 150.f);
-        CTLineDraw(line, context);
-        CFRelease(line);
-
         CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString((CFAttributedStringRef)subtitleString);
         [subtitleString release];
         
@@ -4318,20 +4320,24 @@ you will still get a valid token for name "Funcionário".
 		[$imageData addObject:result];
 	}
 	
-	XMLElement *box12 = [document firstElementMatchingPath:@"/html/body/div[@id='main']/section/div[@class='box1-2']"];
-	XMLElement *img = [box12 firstElementMatchingPath:@"./div[@class='box1Foto']/a/img"];
-	UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[kPortoRootURL stringByAppendingString:[[img attributes] objectForKey:@"src"]]]]];
+	//XMLElement *box12 = [document firstElementMatchingPath:@"/html/body/div[@id='main']/section/div[@class='box1-2']"];
+        
+        NSArray *extraBoxes = [document elementsMatchingPath:@"/html/body/div[@id='main']/section/div[@class='box1']"];
+        for (XMLElement *box12 in extraBoxes) {
+                XMLElement *img = [box12 firstElementMatchingPath:@"./div[@class='box1Foto']/a/img"];
+                UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:[kPortoRootURL stringByAppendingString:[[img attributes] objectForKey:@"src"]]]]];
 
-	XMLElement *extraElement = [box12 firstElementMatchingPath:@"./div[@class='box1Faixa']"];
-	XMLElement *extraElementA = [extraElement firstElementMatchingPath:@"./h4/a"];
-	NSDictionary *extra = [NSDictionary dictionaryWithObjectsAndKeys:
-		[[[extraElement firstElementMatchingPath:@"./h3"] content] substringFromIndex:3], @"Porto",
-		[kPortoRootURL stringByAppendingString:[[extraElementA attributes] objectForKey:@"href"]], @"Link",
-		[[extraElementA firstElementMatchingPath:@"./strong"] content], @"Subtitle",
-		@"Especial", @"Title",
-		image, @"Image",
-		nil];
-	[$imageData addObject:extra];
+                XMLElement *extraElement = [box12 firstElementMatchingPath:@"./div[@class='box1Faixa']"];
+                XMLElement *extraElementA = [extraElement firstElementMatchingPath:@"./h4/a"];
+                NSDictionary *extra = [NSDictionary dictionaryWithObjectsAndKeys:
+                        [[[extraElement firstElementMatchingPath:@"./h3"] content] substringFromIndex:3], @"Porto",
+                        [kPortoRootURL stringByAppendingString:[[extraElementA attributes] objectForKey:@"href"]], @"Link",
+                        @"Especial", @"Title",
+                        [[extraElementA firstElementMatchingPath:@"./strong"] content], @"Subtitle",
+                        image, @"Image",
+                        nil];
+                [$imageData addObject:extra];
+        }
 
 	NSDictionary *more = [NSDictionary dictionaryWithObjectsAndKeys:
 		@"Arquivo", @"Porto",

@@ -2752,11 +2752,12 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 
 #define kPortoErrorDomain @"PortoServerError"
 
-#define kPortoLoginURL @"http://www.educacional.com.br/login/login_ver.asp?URL="
+//#define kPortoLoginURL @"http://www.educacional.com.br/login/login_ver.asp?URL="
+#define kPortoLoginURL @"http://www.educacional.com.br/AVA/Login/Home/LoginVer"
 #define kPortoLogoutURL @"http://www.educacional.com.br/login/logout.asp"
 
 #define kPortoLoginUsernameKey @"strLogin"
-#define kPortoLoginPasswordKey @"strSenha"
+#define kPortoLoginPasswordKey @"strSenhaSS"
 #define kPortoLoginErrorRedirect @"/login/errologin.asp"
 
 #define kPortoGenderCookie @"Sexo"
@@ -2827,11 +2828,14 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	if (response != nil) {
 		NSDictionary *headerFields = [(NSHTTPURLResponse *)response allHeaderFields];
 		NSString *location = [headerFields objectForKey:@"Location"];
+		NSLog(@"location is %@", location);
         
 		if ([location hasPrefix:kPortoLoginErrorRedirect]) {
+			NSLog(@"error redirect");
 			$handler(nil, nil, [NSError errorWithDomain:kPortoErrorDomain code:1 userInfo:nil]);
 		}
-		else if ([location hasPrefix:kPortoGeneralPortal] || [location hasPrefix:kPortoInfantilPortal] || [location hasPrefix:kPortoNivelIPortal] || [location hasPrefix:kPortoNivelIIPortal] || [location hasPrefix:kPortoEMPortal]) {
+		//else if ([location hasPrefix:kPortoGeneralPortal] || [location hasPrefix:kPortoInfantilPortal] || [location hasPrefix:kPortoNivelIPortal] || [location hasPrefix:kPortoNivelIIPortal] || [location hasPrefix:kPortoEMPortal]) {
+		else if ([location hasPrefix:@"/ava/Login/Home/LoginComplete"]) {
 			NSLog(@"GOOD PORTAL!");
 			$handler([NSHTTPCookie cookiesWithResponseHeaderFields:headerFields forURL:[response URL]], location, nil);
 		}
@@ -2858,6 +2862,7 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	NSDictionary *data = [NSDictionary dictionaryWithObjectsAndKeys:
 		$username, kPortoLoginUsernameKey,
 		$password, kPortoLoginPasswordKey,
+		@"/barra_logados/servicos/portoseguro_retorno.asp?r=https://arearestrita.portoseguro.org.br/default.aspx?p=desktop", @"strURL",
 		nil];
 	[request setHTTPBody:[[data urlEncodedString] dataUsingEncoding:NSUTF8StringEncoding]];
 	
@@ -3162,13 +3167,13 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 }
 
 - (void)generateGradeID {
-	if (![self truyyut]) [self generateTruyyut];
+	/*if (![self truyyut]) [self generateTruyyut];
 	if ([self truyyut] == nil) {
 		[self setGradeID:nil];
 		return;
-	}
+	}*/
 
-	NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://www.educacional.com.br/barra_logados/servicos/portoseguro_notasparciais.asp?x=%@", [self truyyut]]];
+	NSURL *url = [NSURL URLWithString:@"http://www.educacional.com.br/barra_logados/servicos/portoseguro_retorno.asp?r=https%3A%2F%2Farearestrita.portoseguro.org.br%2Fdefault.aspx&p=desktop"];
 	NSURLResponse *response;
         NSError *error;
         NSData *data = [self loadPageWithURL:url method:@"GET" response:&response error:&error];
@@ -3188,8 +3193,22 @@ typedef void (^SessionAuthenticationHandler)(NSArray *, NSString *, NSError *);
 	NSString *token = [[medElement attributes] objectForKey:@"value"];
 	NSLog(@"token is %@", token);
 	[document release];
+	
+	NSURL *crUrl = [NSURL URLWithString:[NSString stringWithFormat:@"https://arearestrita.portoseguro.org.br/default.aspx?t=%@", token]];
+	NSURLRequest *cr = [NSURLRequest requestWithURL:crUrl];
+	[NSURLConnection sendSynchronousRequest:cr returningResponse:&response error:NULL];
+	NSArray *cks = [NSHTTPCookie cookiesWithResponseHeaderFields:[response allHeaderFields] forURL:crUrl];
+	
+	NSURLRequest *request = [self requestForPageWithURL:[NSURL URLWithString:@"https://arearestrita.portoseguro.org.br/Navegacao2.aspx"] method:@"GET" cookies:cks];
+	NSData *navigationData = [NSURLConnection sendSynchronousRequest:request returningResponse:&response error:NULL];
 
-	[self setGradeID:token];
+	XMLDocument *navDocument = [[XMLDocument alloc] initWithHTMLData:navigationData];
+	XMLElement *tokenA = [navDocument firstElementMatchingPath:@"/html/body//a[@class='icoNotaParcial']"];
+	NSString *rToken = [[[[tokenA attributes] objectForKey:@"href"] componentsSeparatedByString:@"="] objectAtIndex:1];
+	[navDocument release];
+	
+	NSLog(@"rtoken = %@", rToken);
+	[self setGradeID:rToken];
 }
 
 /* 
@@ -4482,7 +4501,7 @@ you will still get a valid token for name "Funcionário".
 
 	NSData *data;
 	IfNotCached {
-		//#define READ_FROM_LOCAL_DEBUG_HTML
+//		#define READ_FROM_LOCAL_DEBUG_HTML
 		#ifdef READ_FROM_LOCAL_DEBUG_HTML
 		NSData *data = [NSData dataWithContentsOfFile:@"/Users/BobNelson/Documents/Projects/PortoApp/3rdp.html"];
 		#else
@@ -4832,9 +4851,10 @@ you will still get a valid token for name "Funcionário".
 		$viewState = nil;
 		$eventValidation = nil;
 
-		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/notasparciais.aspx?token=%@", [sessionController gradeID]]];
+		NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://notasparciais.portoseguro.org.br/NotasParciais.aspx?token=%@", [sessionController gradeID]]];
+		NSLog(@"url = %@", url);
 		NSURLResponse *response;
-		data = [sessionController loadPageWithURL:url method:@"POST" response:&response error:NULL];
+		data = [sessionController loadPageWithURL:url method:@"GET" response:&response error:NULL];
 		if (data == nil) {
 			[self displayFailViewWithTitle:@"Falha ao carregar página." text:@"Cheque sua conexão de Internet."];
 			return;
@@ -4845,8 +4865,11 @@ you will still get a valid token for name "Funcionário".
 	ElseNotCached(data);
 	
 	XMLDocument *document = [[XMLDocument alloc] initWithHTMLData:data];
-	NSArray *hiddenInputs = [document elementsMatchingPath:@"/html/body/form[@id='form1']/input[@type='hidden']"];
+	NSLog(@"BODY = %@", [[document firstElementMatchingPath:@"/html/body"] content]);
+	NSArray *hiddenInputs = [document elementsMatchingPath:@"/html/body//input[@type='hidden']"];
+	NSLog(@"HIDDEN INPUTS %@", hiddenInputs);
 	for (XMLElement *input in hiddenInputs) {
+		NSLog(@"Got Hidden Input %@", input);
 		NSDictionary *attributes = [input attributes];
 		if ([[attributes objectForKey:@"name"] isEqualToString:@"__VIEWSTATE"])
 			$viewState = [[attributes objectForKey:@"value"] retain];
